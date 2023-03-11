@@ -1,0 +1,12 @@
+DATASET:
+  PATH: "../../datasets/DEMIS/"
+  TILE_OVERLAP: 0.25
+STITCHER:
+  RESOLUTION_RATIO: 0.5
+  MATCHING_METHOD: "loftr"
+  TRANSFORM_TYPE: "affine"
+  COMPOSITING_METHOD: "overwrite"
+  COLORED_OUTPUT: False
+  NORMALISE_INTENSITY: False
+LOFTR:
+  CHECKPOINT_PATH: "LoFTR/weights/outdoor_ds.ckpt"

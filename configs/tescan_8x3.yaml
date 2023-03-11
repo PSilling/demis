@@ -1,0 +1,11 @@
+DATASET:
+  PATH: "../../../datasets/TESCAN/8x3/"
+  TILE_OVERLAP: 0.15
+STITCHER:
+  OUTPUT_PATH: "../../../output/TESCAN/8x3/"
+  RESOLUTION_RATIO: 0.5
+  MATCHING_METHOD: "loftr"
+  TRANSFORM_TYPE: "affine"
+  COMPOSITING_METHOD: "overwrite"
+  COLORED_OUTPUT: False
+  NORMALISE_INTENSITY: True
