@@ -8,6 +8,33 @@ class DemisStitcher(GridStitcher):
     """Specialised grid stitcher that provided additional methods to work
     with the DEMIS dataset."""
 
+    def get_transformation_to_reference(self, tile_labels, grid_labels):
+        """Get the transformation matrix from the coordinate space of one tile
+        to the reference tile (first tile of the grid).
+
+        :param tile_labels: Labels of the source tile.
+        :param grid_labels: Labels of images in the grid that contains the tile labels.
+        :return: Calculated transformation matrix.
+        """
+        # Use the initial tile for rotation as it has no random rotation.
+        reference_labels = grid_labels["tile_labels"][0]
+
+        # Calculate translational shifts.
+        x_shift = tile_labels["position"][0] - reference_labels["position"][0]
+        y_shift = tile_labels["position"][1] - reference_labels["position"][1]
+        T = np.array([[1, 0, x_shift],
+                      [0, 1, y_shift],
+                      [0, 0,       1]])
+
+        # Get the rotation matrix.
+        angle_difference = -tile_labels["angle"]
+        rotation_center = (grid_labels["tile_resolution"][0] // 2 + x_shift,
+                           grid_labels["tile_resolution"][1] // 2 + y_shift)
+        R = np.identity(3)
+        R[:2, :] = cv2.getRotationMatrix2D(rotation_center, angle_difference, 1)
+
+        return R @ T
+
     def get_transformation_between_tiles(self, tile_labels1, tile_labels2,
                                          grid_labels):
         """Get the transformation matrix from the coordinate space of one tile
@@ -19,8 +46,8 @@ class DemisStitcher(GridStitcher):
         :return: Calculated transformation matrix.
         """
         # Get transformations to the reference tile.
-        M1 = self._get_transformation_to_reference(tile_labels1, grid_labels)
-        M2 = self._get_transformation_to_reference(tile_labels2, grid_labels)
+        M1 = self.get_transformation_to_reference(tile_labels1, grid_labels)
+        M2 = self.get_transformation_to_reference(tile_labels2, grid_labels)
 
         # Compute the transformation matrix to the target tile via the reference tile.
         M2_inv = np.linalg.inv(M2)
@@ -64,30 +91,3 @@ class DemisStitcher(GridStitcher):
                                            transformation=M))
 
         return self._stitch_mst_nodes(tile_nodes)
-
-    def _get_transformation_to_reference(self, tile_labels, grid_labels):
-        """Get the transformation matrix from the coordinate space of one tile
-        to the reference tile (first tile of the grid).
-
-        :param tile_labels: Labels of the source tile.
-        :param grid_labels: Labels of images in the grid that contains the tile labels.
-        :return: Calculated transformation matrix.
-        """
-        # Use the initial tile for rotation as it has no random rotation.
-        reference_labels = grid_labels["tile_labels"][0]
-
-        # Calculate translational shifts.
-        x_shift = tile_labels["position"][0] - reference_labels["position"][0]
-        y_shift = tile_labels["position"][1] - reference_labels["position"][1]
-        T = np.array([[1, 0, x_shift],
-                      [0, 1, y_shift],
-                      [0, 0,       1]])
-
-        # Get the rotation matrix.
-        angle_difference = -tile_labels["angle"]
-        rotation_center = (grid_labels["tile_resolution"][0] // 2 + x_shift,
-                           grid_labels["tile_resolution"][1] // 2 + y_shift)
-        R = np.identity(3)
-        R[:2, :] = cv2.getRotationMatrix2D(rotation_center, angle_difference, 1)
-
-        return R @ T

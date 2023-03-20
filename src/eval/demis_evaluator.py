@@ -417,11 +417,13 @@ class DEMISEvaluator():
             # Calculate AUC results (also add mean counts for consistency).
             self.results_homography["SIFT"] = error_auc(
                 corner_errors_sift,
-                self.cfg_loftr.EVAL.ERROR_THRESHOLDS
+                self.cfg_loftr.EVAL.ERROR_THRESHOLDS,
+                False
             )
             self.results_homography["LoFTR"] = error_auc(
                 corner_errors_loftr,
-                self.cfg_loftr.EVAL.ERROR_THRESHOLDS
+                self.cfg_loftr.EVAL.ERROR_THRESHOLDS,
+                False
             )
             self.results_homography["SIFT"]["mean_count"] = (
                 round(self.results_matching["SIFT"]["count"] / pair_count)

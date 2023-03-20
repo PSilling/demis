@@ -14,6 +14,7 @@ class ImageCache:
         self.cfg = cfg
 
         # Setup CLAHE normalisation.
+        # TODO: More automated intensity normalisation.
         if cfg.STITCHER.NORMALISE_INTENSITY:
             self.clahe = cv2.createCLAHE(
                 clipLimit=cfg.STITCHER.CLAHE_LIMIT,

@@ -55,6 +55,7 @@ class TileNode:
         """Add color coating to the image tile. Color coating is based on tile
         position."""
         # Define row color pallette.
+        # TODO: Make the palette deterministic.
         color_shifts = np.array([[0.40, 0.30, 0.30],
                                  [0.30, 0.40, 0.30],
                                  [0.30, 0.30, 0.40],
