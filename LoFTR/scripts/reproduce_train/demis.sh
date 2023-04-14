@@ -8,14 +8,14 @@ export PYTHONPATH=$PROJECT_DIR:$PYTHONPATH
 cd $PROJECT_DIR
 
 data_cfg_path="configs/data/demis_trainval.py"
-main_cfg_path="configs/loftr/outdoor/loftr_ds_dense.py"
+main_cfg_path="configs/loftr/demis/loftr_demis_dense.py"
 ckpt_path="weights/outdoor_ds.ckpt"
 logs_path="../../../output/logs"
 
 n_nodes=1
-n_gpus_per_node=1
-torch_num_workers=2
-batch_size=1
+n_gpus_per_node=2
+torch_num_workers=8
+batch_size=2
 pin_memory=true
 exp_name="demis-bs=$(($n_gpus_per_node * $n_nodes * $batch_size))"
 
@@ -33,4 +33,4 @@ python -u ./train.py \
     --limit_val_batches=1. \
     --num_sanity_val_steps=10 \
     --benchmark=True \
-    --max_epochs=30
+    --max_epochs=15

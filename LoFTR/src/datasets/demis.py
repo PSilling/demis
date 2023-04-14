@@ -2,6 +2,7 @@ import os.path as osp
 import numpy as np
 import torch
 import torch.nn.functional as F
+from copy import deepcopy
 from torch.utils.data import Dataset
 
 from src.utils.dataset import read_demis_gray, create_demis_depth
@@ -38,7 +39,9 @@ class DEMISDataset(Dataset):
 
         # Load the scene info (representation of a single DEMIS grid).
         self.scene_info = np.load(npz_path, allow_pickle=True)
-        self.pair_infos = self.scene_info["pair_infos"]
+        self.pair_infos = deepcopy(self.scene_info["pair_infos"])
+        self.image_paths = deepcopy(self.scene_info["image_paths"])
+        self.poses = deepcopy(self.scene_info["poses"])
 
         # Prepare parameters for image resizing, padding and depthmap padding.
         if mode == "train":
@@ -58,8 +61,8 @@ class DEMISDataset(Dataset):
         idx0, idx1 = self.pair_infos[idx]
 
         # Read grayscale image with shape (1, h, w) and mask with shape (h, w).
-        img_name0 = osp.join(self.root_dir, self.scene_info["image_paths"][idx0])
-        img_name1 = osp.join(self.root_dir, self.scene_info["image_paths"][idx1])
+        img_name0 = osp.join(self.root_dir, self.image_paths[idx0])
+        img_name1 = osp.join(self.root_dir, self.image_paths[idx1])
 
         image0, mask0, scale0 = read_demis_gray(
             img_name0, self.img_resize, self.df, self.img_padding)
@@ -82,8 +85,8 @@ class DEMISDataset(Dataset):
         # Read image poses and compute relative poses. Since the poses are represented
         # directly via homographies (intrinsic matrices use identity), scaled versions
         # are calculated as well. For homography scaling, H' = S * H * S^-1 applies.
-        H0 = self.scene_info["poses"][idx0]
-        H1 = self.scene_info["poses"][idx1]
+        H0 = self.poses[idx0]
+        H1 = self.poses[idx1]
         T_0to1 = torch.tensor(np.matmul(np.linalg.inv(H1), H0), dtype=torch.float)
         T_1to0 = T_0to1.inverse()
 
@@ -113,8 +116,8 @@ class DEMISDataset(Dataset):
             "dataset_name": "DEMIS",
             "scene_id": self.scene_id,
             "pair_id": idx,
-            "pair_names": (self.scene_info["image_paths"][idx0],
-                           self.scene_info["image_paths"][idx1]),
+            "pair_names": (self.image_paths[idx0],
+                           self.image_paths[idx1]),
         }
 
         # Mask scaling for training if image padding is enabled.
