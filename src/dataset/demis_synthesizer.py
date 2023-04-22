@@ -15,7 +15,7 @@ class DEMISSynthesizerConfig:
     INPUT_FILETYPE = "*"
     OUTPUT_FILETYPE = "tif"
 
-    OVERLAP = 0.1  # Base overlap between generated images.
+    OVERLAP = 0.2  # Base overlap between generated images.
     TILE_RESOLUTION = (1024, 1024)  # Resolution (WxH) of generated image tiles.
 
     # Randomised data augmentations to use when generating images.
@@ -24,7 +24,7 @@ class DEMISSynthesizerConfig:
         "rotate": 5,  # Maximum rotation in degrees.
         "contrast": 0.0033,  # Contrast change variance.
         "brightness": 75,  # Brightness change variance.
-        "gaussian_noise": 10  # Gaussian variance.
+        "gaussian_noise": 25  # Gaussian variance.
     }
 
 

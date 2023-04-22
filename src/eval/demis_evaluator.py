@@ -1,14 +1,19 @@
 import cv2
 import numpy as np
+import os
+import re
 import torch
 import warnings
 from LoFTR.src.utils.metrics import error_auc
 from piq import psnr, ssim, fsim, vsi, brisque
+from skimage.measure import ransac
 from skimage.metrics import mean_squared_error
+from skimage.transform import AffineTransform, ProjectiveTransform
 from src.dataset.demis_loader import DemisLoader
 from src.pipeline.demis_stitcher import DemisStitcher
 from src.pipeline.image_cache import ImageCache
 from statistics import fmean
+from timeit import default_timer
 
 
 class DEMISEvaluator():
@@ -51,7 +56,7 @@ class DEMISEvaluator():
 
         # Load DEMIS labels and paths.
         loader = DemisLoader(self.cfg_loftr.DATASET.PATH)
-        self.labels = loader.load_labels()
+        self.labels = loader.load_labels(self.cfg_loftr.EVAL.SPLIT_PATH)
         self.image_paths = loader.load_paths(self.labels)
 
         # Limit the number of labels.
@@ -95,29 +100,50 @@ class DEMISEvaluator():
             print("============================================================")
             print("Pairwise matching results:")
             print("============================================================")
+            print(f"Mean time to match a single pair of tiles (SIFT):  "
+                  f"{self.results_matching['SIFT']['mean_seconds']:.4f} s")
+            print(f"Mean time to match a single pair of tiles (LoFTR): "
+                  f"{self.results_matching['LoFTR']['mean_seconds']:.4f} s")
             print(f"Mean reprojection error (SIFT):  "
-                  f"{self.results_matching['SIFT']['mean']:.4f}")
+                  f"{self.results_matching['SIFT']['mean_error']:.4f}")
             print(f"Mean reprojection error (LoFTR): "
-                  f"{self.results_matching['LoFTR']['mean']:.4f}")
+                  f"{self.results_matching['LoFTR']['mean_error']:.4f}")
+            print(f"Mean inlier reprojection error (SIFT):  "
+                  f"{self.results_matching['SIFT']['mean_inlier_error']:.4f}")
+            print(f"Mean inlier reprojection error (LoFTR): "
+                  f"{self.results_matching['LoFTR']['mean_inlier_error']:.4f}")
             print(f"Mean matches count (SIFT):  "
                   f"{self.results_matching['SIFT']['mean_count']:d}")
             print(f"Mean matches count (LoFTR): "
                   f"{self.results_matching['LoFTR']['mean_count']:d}")
+            print(f"Mean inlier matches count (SIFT):  "
+                  f"{self.results_matching['SIFT']['mean_inlier_count']:d}")
+            print(f"Mean inlier matches count (LoFTR): "
+                  f"{self.results_matching['LoFTR']['mean_inlier_count']:d}")
 
         if self.eval_homography:
             print("============================================================")
             print("Pairwise homography estimation results:")
             print("============================================================")
+            if not self.eval_matching:
+                # Add speed and match count information.
+                print(f"Mean time to match a single pair of tiles (SIFT):  "
+                      f"{self.results_matching['SIFT']['mean_seconds']:.4f} s")
+                print(f"Mean time to match a single pair of tiles (LoFTR): "
+                      f"{self.results_matching['LoFTR']['mean_seconds']:.4f} s")
+                print(f"Mean matches count (SIFT):  "
+                      f"{self.results_matching['SIFT']['mean_count']:d}")
+                print(f"Mean matches count (LoFTR): "
+                      f"{self.results_matching['LoFTR']['mean_count']:d}")
+                print(f"Mean inlier matches count (SIFT):  "
+                      f"{self.results_matching['SIFT']['mean_inlier_count']:d}")
+                print(f"Mean inlier matches count (LoFTR): "
+                      f"{self.results_matching['LoFTR']['mean_inlier_count']:d}")
             for threshold in self.cfg_loftr.EVAL.ERROR_THRESHOLDS:
                 print(f"Corner error AUC@{threshold:2d}px (SIFT):  "
                       f"{self.results_homography['SIFT'][str(threshold)] * 100:.4f}%")
                 print(f"Corner error AUC@{threshold:2d}px (LoFTR): "
                       f"{self.results_homography['LoFTR'][str(threshold)] * 100:.4f}%")
-            if not self.eval_matching:
-                print(f"Mean matches count (SIFT):  "
-                      f"{self.results_homography['SIFT']['mean_count']:d}")
-                print(f"Mean matches count (LoFTR): "
-                      f"{self.results_homography['LoFTR']['mean_count']:d}")
 
         if self.eval_grid:
             print("============================================================")
@@ -200,6 +226,34 @@ class DEMISEvaluator():
                              f"{self.cfg_loftr.STITCHER.TRANSFORM_TYPE}")
 
         return homography, matches2, matches1
+
+    def _get_inliers(self, matches1, matches2):
+        """Get inlier matches according to RANSAC.
+
+        :param matches1: Matching keypoints from the source image tile.
+        :param matches2: Matching keypoints from the target image tile.
+        :return: Inliers matches (source first, target second).
+        """
+        if self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "affine":
+            transform_type = AffineTransform
+            min_samples = 3
+        elif self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "perspective":
+            transform_type = ProjectiveTransform
+            min_samples = 4
+        else:
+            raise ValueError("Invalid transform type: "
+                             f"{self.cfg_loftr.STITCHER.TRANSFORM_TYPE}")
+
+        # Apply RANSAC to find inlier keypoints.
+        _, inliers_map = ransac(
+            (matches2, matches1), transform_type,
+            min_samples=min_samples,
+            residual_threshold=self.cfg_loftr.STITCHER.RANSAC_THRESHOLD,
+            max_trials=100
+        )
+
+        # Filter all outliers.
+        return matches2[inliers_map], matches1[inliers_map]
 
     def _get_reprojection_error(self, matches1, matches2, homography_gt):
         """Calculate the reprojection error between two image tiles.
@@ -302,18 +356,30 @@ class DEMISEvaluator():
         """Run the evaluation of pairwise matching and homography estimation (unless
         not selected)."""
         # Initialise result dictionaries.
-        self.results_matching = {"SIFT": {"sum": 0, "count": 0,
-                                          "mean": 0.0, "mean_count": 0},
-                                 "LoFTR": {"sum": 0, "count": 0,
-                                           "mean": 0.0, "mean_count": 0}}
+        self.results_matching = {"SIFT": {"total_seconds": 0, "sum": 0, "count": 0,
+                                          "inlier_sum": 0, "inlier_count": 0,
+                                          "mean_error": 0.0, "mean_count": 0,
+                                          "mean_inlier_error": 0.0,
+                                          "mean_inlier_count": 0},
+                                 "LoFTR": {"total_seconds": 0, "sum": 0, "count": 0,
+                                           "inlier_sum": 0, "inlier_count": 0,
+                                           "mean_error": 0.0, "mean_count": 0,
+                                           "mean_inlier_error": 0.0,
+                                           "mean_inlier_count": 0}}
         self.results_homography = {"SIFT": {}, "LoFTR": {}}
 
         pair_count = 0
         corner_errors_sift = []
         corner_errors_loftr = []
         for i, labels in enumerate(self.labels):
+            # Get tile paths.
+            match = re.search(r"g(\d+)", os.path.basename(labels["path"]))
+            if match is None:
+                raise ValueError(f"Cannot parse labels file name: {labels['path']}.")
+            grid_index = int(match.groups()[0])
             tile_labels = labels["tile_labels"]
-            tile_paths = self.image_paths[f"{i}_0"]
+            tile_paths = self.image_paths[f"{grid_index}_0"]
+
             print(f"[{i + 1}/{len(self.labels)}] Processing pairs in grid starting "
                   f"with image {tile_paths[0, 0]}...")
 
@@ -340,6 +406,8 @@ class DEMISEvaluator():
                             tile_labels2=tile_labels[position_index],
                             grid_labels=labels
                         )
+
+                    start_time_sift = default_timer()
                     homography_sift, matches_sift, matches_sift_neigh = \
                         self._get_homography(
                             img1=img_neigh,
@@ -348,6 +416,9 @@ class DEMISEvaluator():
                             position2=position,
                             stitcher=self.stitcher_sift
                         )
+                    end_time_sift = default_timer()
+
+                    start_time_loftr = default_timer()
                     homography_loftr, matches_loftr, matches_loftr_neigh = \
                         self._get_homography(
                             img1=img_neigh,
@@ -356,6 +427,17 @@ class DEMISEvaluator():
                             position2=position,
                             stitcher=self.stitcher_loftr
                         )
+                    end_time_loftr = default_timer()
+
+                    # Get inlier matches.
+                    inliers_sift, inliers_sift_neigh = self._get_inliers(
+                        matches1=matches_sift_neigh,
+                        matches2=matches_sift
+                    )
+                    inliers_loftr, inliers_loftr_neigh = self._get_inliers(
+                        matches1=matches_loftr_neigh,
+                        matches2=matches_loftr
+                    )
 
                     if self.eval_matching:
                         # Calculate reprojection errors.
@@ -369,15 +451,37 @@ class DEMISEvaluator():
                             matches2=matches_loftr,
                             homography_gt=homography_gt
                         )
+                        inlier_error_sift = self._get_reprojection_error(
+                            matches1=inliers_sift_neigh,
+                            matches2=inliers_sift,
+                            homography_gt=homography_gt
+                        )
+                        inlier_error_loftr = self._get_reprojection_error(
+                            matches1=inliers_loftr_neigh,
+                            matches2=inliers_loftr,
+                            homography_gt=homography_gt
+                        )
 
                         # Increase the error sums and counts.
                         self.results_matching["SIFT"]["sum"] += error_sift
                         self.results_matching["LoFTR"]["sum"] += error_loftr
+                        self.results_matching["SIFT"]["inlier_sum"] += \
+                            inlier_error_sift
+                        self.results_matching["LoFTR"]["inlier_sum"] += \
+                            inlier_error_loftr
 
-                    # Always save match counts.
+                    # Always save time and match counts.
+                    self.results_matching["SIFT"]["total_seconds"] += \
+                        end_time_sift - start_time_sift
+                    self.results_matching["LoFTR"]["total_seconds"] += \
+                        end_time_loftr - start_time_loftr
                     self.results_matching["SIFT"]["count"] += matches_sift.shape[0]
                     self.results_matching["LoFTR"]["count"] += \
                         matches_loftr.shape[0]
+                    self.results_matching["SIFT"]["inlier_count"] += \
+                        inliers_sift.shape[0]
+                    self.results_matching["LoFTR"]["inlier_count"] += \
+                        inliers_loftr.shape[0]
 
                     if self.eval_homography:
                         # Calculate corner errors.
@@ -398,20 +502,42 @@ class DEMISEvaluator():
 
         if self.eval_matching:
             # Calculate mean reprojection errors and counts.
-            self.results_matching["SIFT"]["mean"] = (
+            self.results_matching["SIFT"]["mean_error"] = (
                 self.results_matching["SIFT"]["sum"]
                 / self.results_matching["SIFT"]["count"]
             )
-            self.results_matching["LoFTR"]["mean"] = (
+            self.results_matching["LoFTR"]["mean_error"] = (
                 self.results_matching["LoFTR"]["sum"]
                 / self.results_matching["LoFTR"]["count"]
             )
-            self.results_matching["SIFT"]["mean_count"] = (
-                round(self.results_matching["SIFT"]["count"] / pair_count)
+            self.results_matching["SIFT"]["mean_inlier_error"] = (
+                self.results_matching["SIFT"]["inlier_sum"]
+                / self.results_matching["SIFT"]["inlier_count"]
             )
-            self.results_matching["LoFTR"]["mean_count"] = (
-                round(self.results_matching["LoFTR"]["count"] / pair_count)
+            self.results_matching["LoFTR"]["mean_inlier_error"] = (
+                self.results_matching["LoFTR"]["inlier_sum"]
+                / self.results_matching["LoFTR"]["inlier_count"]
             )
+
+        # Always calculate mean time and match counts.
+        self.results_matching["SIFT"]["mean_seconds"] = (
+            self.results_matching["SIFT"]["total_seconds"] / pair_count
+        )
+        self.results_matching["LoFTR"]["mean_seconds"] = (
+            self.results_matching["LoFTR"]["total_seconds"] / pair_count
+        )
+        self.results_matching["SIFT"]["mean_count"] = (
+            round(self.results_matching["SIFT"]["count"] / pair_count)
+        )
+        self.results_matching["LoFTR"]["mean_count"] = (
+            round(self.results_matching["LoFTR"]["count"] / pair_count)
+        )
+        self.results_matching["SIFT"]["mean_inlier_count"] = (
+            round(self.results_matching["SIFT"]["inlier_count"] / pair_count)
+        )
+        self.results_matching["LoFTR"]["mean_inlier_count"] = (
+            round(self.results_matching["LoFTR"]["inlier_count"] / pair_count)
+        )
 
         if self.eval_homography:
             # Calculate AUC results (also add mean counts for consistency).
@@ -425,12 +551,6 @@ class DEMISEvaluator():
                 self.cfg_loftr.EVAL.ERROR_THRESHOLDS,
                 False
             )
-            self.results_homography["SIFT"]["mean_count"] = (
-                round(self.results_matching["SIFT"]["count"] / pair_count)
-            )
-            self.results_homography["LoFTR"]["mean_count"] = (
-                round(self.results_matching["LoFTR"]["count"] / pair_count)
-            )
 
     def _evaluate_grid(self):
         """Run the evaluation of the complete stitching output."""
@@ -443,14 +563,20 @@ class DEMISEvaluator():
                              "BRISQUE": {"SIFT": [], "LoFTR": []}}
 
         for i, labels in enumerate(self.labels):
-            tile_paths = self.image_paths[f"{i}_0"]
+            # Get tile paths.
+            match = re.search(r"g(\d+)", os.path.basename(labels["path"]))
+            if match is None:
+                raise ValueError(f"Cannot parse labels file name: {labels['path']}.")
+            grid_index = int(match.groups()[0])
+            tile_paths = self.image_paths[f"{grid_index}_0"]
+
             print(f"[{i + 1}/{len(self.labels)}] Processing grid starting with "
                   f"image {tile_paths[0, 0]}...")
 
             # Stitch the grid using ground truth labels, LoFTR, and SIFT.
             img_gt, pos_gt = self.stitcher_loftr.stitch_demis_grid_mst(labels)
-            img_sift, pos_sift = self.stitcher_sift.stitch_grid_mst(tile_paths)
-            img_loftr, pos_loftr = self.stitcher_loftr.stitch_grid_mst(tile_paths)
+            img_sift, pos_sift = self.stitcher_sift.stitch_grid(tile_paths)
+            img_loftr, pos_loftr = self.stitcher_loftr.stitch_grid(tile_paths)
 
             # Align image centers and dimensions.
             img_gt, img_sift, pos_gt_sift = self._align_images(img_gt, img_sift,

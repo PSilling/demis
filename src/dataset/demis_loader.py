@@ -54,10 +54,12 @@ class DemisLoader(DatasetLoader):
                 "tile_labels": tile_labels
             }
 
-    def load_labels(self):
+    def load_labels(self, split_path=None):
         """
         Loads labels of all DEMIS images.
 
+        :param split_path: Path to a split file. If included, only labels from the
+                           split are loaded.
         :return: Parsed DEMIS labels.
         """
         # Check if the DEMIS directory exists and has the correct structure.
@@ -68,7 +70,16 @@ class DemisLoader(DatasetLoader):
         if not os.path.isdir(labels_path) or not os.path.isdir(images_path):
             raise ValueError("The given DEMIS directory has an unexpected structure.")
 
+        # Get paths to all labels files.
         labels_paths = glob(os.path.join(labels_path, "*.txt"))
+
+        # Limit label paths to those in the split if one was given.
+        if split_path:
+            with open(split_path) as split_file:
+                splits = split_file.read().splitlines()
+            splits = [os.path.join(labels_path, path + ".txt") for path in splits]
+            labels_paths = [path for path in labels_paths if path in splits]
+
         labels = [self.parse_demis_labels(path) for path in labels_paths]
         return labels
 

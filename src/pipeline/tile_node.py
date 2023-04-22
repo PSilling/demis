@@ -25,6 +25,9 @@ class TileNode:
         self.matches = matches
         self.matches_parent = matches_parent
         self.transformation = transformation
+        if (transformation is not None and parent is not None
+                and parent.transformation is not None):
+            self.transformation = parent.transformation.dot(transformation)
 
     def estimate_transformation(self):
         """Estimate image tile transformation based on the corresponding matching result
@@ -34,6 +37,14 @@ class TileNode:
         if self.cfg.STITCHER.TRANSFORM_TYPE == "affine":
             M = np.identity(3)
             M[:2, :], _ = cv2.estimateAffine2D(
+                self.matches,
+                self.matches_parent,
+                method=cv2.RANSAC,
+                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD
+            )
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "partial-affine":
+            M = np.identity(3)
+            M[:2, :], _ = cv2.estimateAffinePartial2D(
                 self.matches,
                 self.matches_parent,
                 method=cv2.RANSAC,
@@ -50,6 +61,42 @@ class TileNode:
         if self.parent:
             M = self.parent.transformation.dot(M)
         self.transformation = M
+
+    def remove_scaling(self):
+        """Remove scaling from an affine transformation.
+
+        :return: Updated translation values and angle.
+        """
+        if (self.transformation is None
+                or self.cfg.STITCHER.TRANSFORM_TYPE == "perspective"):
+            raise ValueError(f"Cannot remove scaling from:\n{self.transformation}")
+
+        # Decompose the estimated affine transformation.
+        # Based on a formula from:
+        # merv (https://math.stackexchange.com/users/61427/merv)
+        # Given this transformation matrix, how do I decompose it
+        # into translation, rotation and scale matrices?,
+        # URL (version: 2017-04-13): https://math.stackexchange.com/q/417813
+        M = self.transformation
+        T = np.identity(3)
+        R = np.identity(3)
+        S = np.identity(3)
+
+        T[:, 2] = M[:, 2]
+        angle = np.arctan2(M[1, 0], M[1, 1])
+        R[0, 0] = np.cos(angle)
+        R[0, 1] = -np.sin(angle)
+        R[1, 0] = -R[0, 1]
+        R[1, 1] = R[0, 0]
+        S[0, 0] = np.sign(M[0, 0]) * np.sqrt(M[0, 0]**2 + M[0, 1]**2)
+        S[1, 1] = np.sign(M[1, 1]) * np.sqrt(M[1, 0]**2 + M[1, 1]**2)
+
+        # Remove scale from the transformation estimate.
+        self.transformation = np.linalg.inv(S) @ M
+
+        # Return the updated pose parameters (translation on x and y axes, and the
+        # rotation angle).
+        return self.transformation[0, 2], self.transformation[1, 2], angle
 
     def color_coat_image(self):
         """Add color coating to the image tile. Color coating is based on tile

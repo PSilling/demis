@@ -12,8 +12,8 @@ from src.pipeline.demis_stitcher import DemisStitcher
 # TODO: Replace with CLI parameterization.
 if __name__ == "__main__":
     train_split_size = None
-    val_split_size = 2
-    test_split_size = 2
+    val_split_size = 60
+    test_split_size = 60
     demis_config_path = "configs/eval.yaml"
 
     # Configure paths.
@@ -85,17 +85,18 @@ if __name__ == "__main__":
         raise ValueError("Too many validation or test files.")
     train_split_size = len(labels) - val_split_size - test_split_size
 
-    output_path_train = os.path.join(splits_dir, "train_list.txt")
-    split_filenames_train = split_filenames[:train_split_size]
-    with open(output_path_train, "w") as file_train:
-        file_train.write("\n".join(permutation(split_filenames_train)))
-
     output_path_val = os.path.join(splits_dir, "val_list.txt")
-    split_filenames_val = split_filenames[train_split_size:train_split_size + val_split_size]
+    split_filenames_val = split_filenames[:val_split_size]
     with open(output_path_val, "w") as file_val:
         file_val.write("\n".join(permutation(split_filenames_val)))
 
     output_path_test = os.path.join(splits_dir, "test_list.txt")
-    split_filenames_test = split_filenames[train_split_size + val_split_size:]
+    split_filenames_test = \
+        split_filenames[val_split_size:val_split_size + test_split_size]
     with open(output_path_test, "w") as file_test:
         file_test.write("\n".join(permutation(split_filenames_test)))
+
+    output_path_train = os.path.join(splits_dir, "train_list.txt")
+    split_filenames_train = split_filenames[val_split_size + test_split_size:]
+    with open(output_path_train, "w") as file_train:
+        file_train.write("\n".join(permutation(split_filenames_train)))
