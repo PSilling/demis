@@ -8,6 +8,7 @@ Year: 2023
 import argparse
 import numpy as np
 import os
+import re
 from numpy.random import permutation
 from src.config.config import get_cfg_defaults
 from src.dataset.demis_loader import DemisLoader
@@ -67,10 +68,16 @@ if __name__ == "__main__":
     os.makedirs(indices_dir, exist_ok=True)
     os.makedirs(splits_dir, exist_ok=True)
     for i, grid_labels in enumerate(labels):
+        match = re.search(r"g(\d+)", os.path.basename(grid_labels["path"]))
+        if match is None:
+            raise ValueError(
+                "Cannot parse labels file name: " f"{grid_labels['path']}."
+            )
+        grid_index = int(match.groups()[0])
         grid_title = os.path.splitext(os.path.basename(grid_labels["path"]))[0]
         split_filenames.append(grid_title)
         tile_labels = grid_labels["tile_labels"]
-        tile_paths = full_image_paths[f"{i}_0"]
+        tile_paths = full_image_paths[f"{grid_index}_0"]
         print(
             f"[{i + 1}/{len(labels)}] Generating indices for labels file "
             f"{grid_title}..."
