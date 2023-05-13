@@ -6,8 +6,16 @@ from dataclasses import dataclass, field
 class TileNode:
     """Tree node for an image tile."""
 
-    def __init__(self, cfg, img, position, parent=None, matches=None,
-                 matches_parent=None, transformation=None):
+    def __init__(
+        self,
+        cfg,
+        img,
+        position,
+        parent=None,
+        matches=None,
+        matches_parent=None,
+        transformation=None,
+    ):
         """TileNode constructor.
 
         :param cfg: DEMIS configuration.
@@ -25,8 +33,11 @@ class TileNode:
         self.matches = matches
         self.matches_parent = matches_parent
         self.transformation = transformation
-        if (transformation is not None and parent is not None
-                and parent.transformation is not None):
+        if (
+            transformation is not None
+            and parent is not None
+            and parent.transformation is not None
+        ):
             self.transformation = parent.transformation.dot(transformation)
 
     def estimate_transformation(self):
@@ -40,7 +51,7 @@ class TileNode:
                 self.matches,
                 self.matches_parent,
                 method=cv2.RANSAC,
-                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD
+                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD,
             )
         elif self.cfg.STITCHER.TRANSFORM_TYPE == "partial-affine":
             M = np.identity(3)
@@ -48,14 +59,19 @@ class TileNode:
                 self.matches,
                 self.matches_parent,
                 method=cv2.RANSAC,
-                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD
+                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD,
             )
         elif self.cfg.STITCHER.TRANSFORM_TYPE == "perspective":
-            M, _ = cv2.findHomography(self.matches, self.matches_parent, cv2.RANSAC,
-                                      self.cfg.STITCHER.RANSAC_THRESHOLD)
+            M, _ = cv2.findHomography(
+                self.matches,
+                self.matches_parent,
+                cv2.RANSAC,
+                self.cfg.STITCHER.RANSAC_THRESHOLD,
+            )
         else:
-            raise ValueError("Invalid transform type: "
-                             f"{self.cfg.STITCHER.TRANSFORM_TYPE}")
+            raise ValueError(
+                "Invalid transform type: " f"{self.cfg.STITCHER.TRANSFORM_TYPE}"
+            )
 
         # Add the parent transformation if present.
         if self.parent:
@@ -63,12 +79,14 @@ class TileNode:
         self.transformation = M
 
     def remove_scaling(self):
-        """Remove scaling from an affine transformation.
+        """Remove scaling from the current transformation (must be affine).
 
         :return: Updated translation values and angle.
         """
-        if (self.transformation is None
-                or self.cfg.STITCHER.TRANSFORM_TYPE == "perspective"):
+        if (
+            self.transformation is None
+            or self.cfg.STITCHER.TRANSFORM_TYPE == "perspective"
+        ):
             raise ValueError(f"Cannot remove scaling from:\n{self.transformation}")
 
         # Decompose the estimated affine transformation.
@@ -88,8 +106,8 @@ class TileNode:
         R[0, 1] = -np.sin(angle)
         R[1, 0] = -R[0, 1]
         R[1, 1] = R[0, 0]
-        S[0, 0] = np.sign(M[0, 0]) * np.sqrt(M[0, 0]**2 + M[0, 1]**2)
-        S[1, 1] = np.sign(M[1, 1]) * np.sqrt(M[1, 0]**2 + M[1, 1]**2)
+        S[0, 0] = np.sign(M[0, 0]) * np.sqrt(M[0, 0] ** 2 + M[0, 1] ** 2)
+        S[1, 1] = np.sign(M[1, 1]) * np.sqrt(M[1, 0] ** 2 + M[1, 1] ** 2)
 
         # Remove scale from the transformation estimate.
         self.transformation = np.linalg.inv(S) @ M
@@ -102,13 +120,16 @@ class TileNode:
         """Add color coating to the image tile. Color coating is based on tile
         position."""
         # Define row color pallette.
-        # TODO: Make the palette deterministic.
-        color_shifts = np.array([[0.40, 0.30, 0.30],
-                                 [0.30, 0.40, 0.30],
-                                 [0.30, 0.30, 0.40],
-                                 [0.45, 0.45, 0.10],
-                                 [0.45, 0.10, 0.45],
-                                 [0.10, 0.45, 0.45]])
+        color_shifts = np.array(
+            [
+                [0.40, 0.30, 0.30],
+                [0.30, 0.40, 0.30],
+                [0.30, 0.30, 0.40],
+                [0.45, 0.45, 0.10],
+                [0.45, 0.10, 0.45],
+                [0.10, 0.45, 0.45],
+            ]
+        )
 
         # Reverse the pallette for odd rows.
         if self.position[0] % 2 == 1:
@@ -130,9 +151,7 @@ class TileNode:
         """
         # Get homogenous coordinates of the four image tile corners.
         height, width = self.img.shape
-        C = np.array([[0, width,  width,      0],
-                      [0,     0, height, height],
-                      [1,     1,      1,      1]])
+        C = np.array([[0, width, width, 0], [0, 0, height, height], [1, 1, 1, 1]])
 
         # Warp the corner coordinates.
         C = self.transformation @ C
@@ -151,5 +170,6 @@ class TileNode:
 @dataclass(order=True)
 class WeightedTileNode:
     """Dataclass for tile nodes. Uses only node weights for prioritization."""
+
     weight: float
     node: TileNode = field(compare=False)

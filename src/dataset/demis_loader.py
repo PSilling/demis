@@ -33,25 +33,28 @@ class DemisLoader(DatasetLoader):
                 if match is None:
                     raise ValueError(f"Invalid image tile labels in file: {path}.")
                 groups = match.groups()
-                tile_labels.append({
-                    "path": os.path.normpath(
-                        os.path.join(os.path.dirname(path), groups[0])
-                    ),
-                    "grid_position": (int(groups[1]), int(groups[2])),
-                    "position": (int(groups[3]), int(groups[4])),
-                    "angle": int(groups[5])
-                })
+                tile_labels.append(
+                    {
+                        "path": os.path.normpath(
+                            os.path.join(os.path.dirname(path), groups[0])
+                        ),
+                        "grid_position": (int(groups[1]), int(groups[2])),
+                        "position": (int(groups[3]), int(groups[4])),
+                        "angle": int(groups[5]),
+                    }
+                )
 
             # Order the tile labels based on their grid positions.
-            tile_labels = sorted(tile_labels,
-                                 key=lambda l: f"{l['grid_position'][0]}"
-                                               f"{l['grid_position'][1]}")
+            tile_labels = sorted(
+                tile_labels,
+                key=lambda l: f"{l['grid_position'][0]}" f"{l['grid_position'][1]}",
+            )
 
             return {
                 "path": path,
                 "grid_size": grid_size,
                 "tile_resolution": tile_resolution,
-                "tile_labels": tile_labels
+                "tile_labels": tile_labels,
             }
 
     def load_labels(self, split_path=None):

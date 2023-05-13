@@ -4,7 +4,7 @@ import numpy as np
 from glob import glob
 
 
-class DatasetLoader():
+class DatasetLoader:
     """Standard class for loading datasets of EM image tiles from a directory."""
 
     def __init__(self, path):
@@ -68,10 +68,12 @@ class DatasetLoader():
         for path_key in image_paths.keys():
             if 0 in image_paths[path_key]:
                 grid_index, slice_index = path_key.split("_")
-                raise ValueError(f"Images at grid index g{int(grid_index):05d} "
-                                 f"and slice index s{int(slice_index):05d} do "
-                                 "not match the expected grid size "
-                                 f"{grid_size[0]}x{grid_size[1]}.")
+                raise ValueError(
+                    f"Images at grid index g{int(grid_index):05d} "
+                    f"and slice index s{int(slice_index):05d} do "
+                    "not match the expected grid size "
+                    f"{grid_size[0]}x{grid_size[1]}."
+                )
         return image_paths
 
     def load_paths(self):

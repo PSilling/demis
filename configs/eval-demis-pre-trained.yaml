@@ -1,12 +1,13 @@
 DATASET:
-  PATH: "../../../datasets/TESCAN/8x3/"
-  TILE_OVERLAP: 0.15
+  PATH: "datasets/DEMIS"
+  TILE_OVERLAP: 0.3
 STITCHER:
-  OUTPUT_PATH: "../../../output/TESCAN/8x3/"
   RESOLUTION_RATIO: 0.5
   MATCHING_METHOD: "loftr"
   TRANSFORM_TYPE: "affine"
   CONSTRUCTION_METHOD: "slam"
   COMPOSITING_METHOD: "overwrite"
-  COLORED_OUTPUT: False
-  NORMALISE_INTENSITY: True
+LOFTR:
+  CHECKPOINT_PATH: "LoFTR/weights/outdoor_ds.ckpt"
+EVAL:
+  SPLIT_PATH: "datasets/DEMIS/splits/test_list.txt"

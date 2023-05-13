@@ -1,24 +1,20 @@
 import cv2
 
 
-class ImageCache:
-    """Cache for image tiles.
-    TODO: Actual caching.
-    """
+class ImageLoader:
+    """Cache for image tiles."""
 
     def __init__(self, cfg):
-        """ImageCache constructor.
+        """ImageLoader constructor.
 
         :param cfg: DEMIS configuration.
         """
         self.cfg = cfg
 
         # Setup CLAHE normalisation.
-        # TODO: More automated intensity normalisation.
         if cfg.STITCHER.NORMALISE_INTENSITY:
             self.clahe = cv2.createCLAHE(
-                clipLimit=cfg.STITCHER.CLAHE_LIMIT,
-                tileGridSize=cfg.STITCHER.CLAHE_GRID
+                clipLimit=cfg.STITCHER.CLAHE_LIMIT, tileGridSize=cfg.STITCHER.CLAHE_GRID
             )
 
     def load_img(self, path, mode=cv2.IMREAD_GRAYSCALE):

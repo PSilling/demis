@@ -9,9 +9,9 @@ from glob import glob
 class DEMISSynthesizerConfig:
     """DEMIS dataset synthesizer configuration."""
 
-    INPUT_PATH = "../../datasets/Synthetic Source/"
+    INPUT_PATH = "datasets/DEMIS Source/"
     OUTPUT_PREFIX = "demis_"
-    OUTPUT_PATH = "../../datasets/DEMIS/"
+    OUTPUT_PATH = "datasets/DEMIS/"
     INPUT_FILETYPE = "*"
     OUTPUT_FILETYPE = "tif"
 
@@ -24,11 +24,11 @@ class DEMISSynthesizerConfig:
         "rotate": 5,  # Maximum rotation in degrees.
         "contrast": 0.0033,  # Contrast change variance.
         "brightness": 75,  # Brightness change variance.
-        "gaussian_noise": 25  # Gaussian variance.
+        "gaussian_noise": 25,  # Gaussian variance.
     }
 
 
-class DEMISSynthesizer():
+class DEMISSynthesizer:
     """Synthesizer for images in the DEMIS dataset."""
 
     def __init__(self, config):
@@ -49,8 +49,10 @@ class DEMISSynthesizer():
         # Synthesize the dataset.
         demis_paths = self._parse_demis_paths()
         for i, path in enumerate(demis_paths):
-            print(f"[{i + 1}/{len(demis_paths)}] Processing source image "
-                  f"{os.path.basename(path)}...")
+            print(
+                f"[{i + 1}/{len(demis_paths)}] Processing source image "
+                f"{os.path.basename(path)}..."
+            )
             img = cv2.imread(path, cv2.IMREAD_COLOR)
 
             if img is None:
@@ -61,22 +63,30 @@ class DEMISSynthesizer():
 
             # Save all generated image tiles.
             for j, img_tile in enumerate(img_tiles):
-                filename = (f"{self.config.OUTPUT_PREFIX}g{i:05d}_t{j:05d}_s00000"
-                            f".{self.config.OUTPUT_FILETYPE}")
+                filename = (
+                    f"{self.config.OUTPUT_PREFIX}g{i:05d}_t{j:05d}_s00000"
+                    f".{self.config.OUTPUT_FILETYPE}"
+                )
                 cv2.imwrite(os.path.join(img_output_path, filename), img_tile)
 
             # Save image labels.
             filename = f"{self.config.OUTPUT_PREFIX}g{i:05d}.txt"
             with open(os.path.join(labels_output_path, filename), "w") as labels_file:
                 header = labels[0]
-                labels_file.write(f"{header[0]:<2d}\t{header[1]:<2d}\t"
-                                  f"{header[2]:<5d}\t{header[3]:<5d}\n")
+                labels_file.write(
+                    f"{header[0]:<2d}\t{header[1]:<2d}\t"
+                    f"{header[2]:<5d}\t{header[3]:<5d}\n"
+                )
                 for j, label in enumerate(labels[1:]):
-                    tile_path = (f"../images/{self.config.OUTPUT_PREFIX}g{i:05d}_"
-                                 f"t{j:05d}_s00000.{self.config.OUTPUT_FILETYPE}")
-                    labels_file.write(f"{tile_path}\t{label[0]:<2d}\t{label[1]:<2d}\t"
-                                      f"{label[2]:<5d}\t{label[3]:<5d}\t"
-                                      f"{label[4]:< 4d}\n")
+                    tile_path = (
+                        f"../images/{self.config.OUTPUT_PREFIX}g{i:05d}_"
+                        f"t{j:05d}_s00000.{self.config.OUTPUT_FILETYPE}"
+                    )
+                    labels_file.write(
+                        f"{tile_path}\t{label[0]:<2d}\t{label[1]:<2d}\t"
+                        f"{label[2]:<5d}\t{label[3]:<5d}\t"
+                        f"{label[4]:< 4d}\n"
+                    )
 
     def _parse_demis_paths(self):
         """
@@ -87,8 +97,9 @@ class DEMISSynthesizer():
         if os.path.isfile(self.config.INPUT_PATH):
             paths = [self.config.INPUT_PATH]
         elif os.path.isdir(self.config.INPUT_PATH):
-            search_path = os.path.join(self.config.INPUT_PATH,
-                                       f"**/*.{self.config.INPUT_FILETYPE}")
+            search_path = os.path.join(
+                self.config.INPUT_PATH, f"**/*.{self.config.INPUT_FILETYPE}"
+            )
             paths = glob(search_path, recursive=True)
         else:
             raise ValueError(f"Cannot read from path: {self.config.INPUT_PATH}")
@@ -153,8 +164,10 @@ class DEMISSynthesizer():
         # Get pixel shifts necessary to avoid black bars with random rotation.
         tile_resolution = self.config.TILE_RESOLUTION
         rotation_sin = np.sin(np.deg2rad(self.config.AUGMENTATIONS["rotate"]))
-        rotation_shifts = (math.ceil(tile_resolution[1] * rotation_sin),
-                           math.ceil(tile_resolution[0] * rotation_sin))
+        rotation_shifts = (
+            math.ceil(tile_resolution[1] * rotation_sin),
+            math.ceil(tile_resolution[0] * rotation_sin),
+        )
 
         # Calculate the grid size based on the given tile resolution.
         # Calculations are based on the following equation:
@@ -162,23 +175,35 @@ class DEMISSynthesizer():
         # + ROTATION_SHIFT / TILE_SIZE) * TILE_SIZE
         # =
         # IMG_SIZE - 2 * ROTATION_SHIFT
-        max_shifts = ((self.config.OVERLAP - self.config.AUGMENTATIONS["translate"]
-                       + rotation_shifts[0] / tile_resolution[0]),
-                      (self.config.OVERLAP - self.config.AUGMENTATIONS["translate"]
-                       + rotation_shifts[1] / tile_resolution[1]))
+        max_shifts = (
+            (
+                self.config.OVERLAP
+                - self.config.AUGMENTATIONS["translate"]
+                + rotation_shifts[0] / tile_resolution[0]
+            ),
+            (
+                self.config.OVERLAP
+                - self.config.AUGMENTATIONS["translate"]
+                + rotation_shifts[1] / tile_resolution[1]
+            ),
+        )
         width_tiles = (img.shape[1] - 2 * rotation_shifts[0]) / tile_resolution[0]
         height_tiles = (img.shape[0] - 2 * rotation_shifts[1]) / tile_resolution[1]
         width_tiles -= max_shifts[0]
         height_tiles -= max_shifts[1]
-        grid_size = (int(height_tiles / (1 - max_shifts[1])),
-                     int(width_tiles / (1 - max_shifts[0])))
+        grid_size = (
+            int(height_tiles / (1 - max_shifts[1])),
+            int(width_tiles / (1 - max_shifts[0])),
+        )
 
         # Calculate pixel shifts for overlap and random translation.
-        overlap_shifts = (round(tile_resolution[0] * self.config.OVERLAP),
-                          round(tile_resolution[1] * self.config.OVERLAP))
+        overlap_shifts = (
+            round(tile_resolution[0] * self.config.OVERLAP),
+            round(tile_resolution[1] * self.config.OVERLAP),
+        )
         translate_shifts = (
             math.ceil(tile_resolution[0] * self.config.AUGMENTATIONS["translate"]),
-            math.ceil(tile_resolution[1] * self.config.AUGMENTATIONS["translate"])
+            math.ceil(tile_resolution[1] * self.config.AUGMENTATIONS["translate"]),
         )
 
         # Tile the input image.
@@ -187,8 +212,10 @@ class DEMISSynthesizer():
         labels = [(grid_size[0], grid_size[1], tile_resolution[0], tile_resolution[1])]
         for i, j in np.ndindex(grid_size):
             # Get base start position without translation and rotation shifts.
-            start_position = [j * (tile_resolution[0] - overlap_shifts[0]),
-                              i * (tile_resolution[1] - overlap_shifts[1])]
+            start_position = [
+                j * (tile_resolution[0] - overlap_shifts[0]),
+                i * (tile_resolution[1] - overlap_shifts[1]),
+            ]
 
             # Add random rotation shift (plus one for image boundary and minus one
             # for each following pair of neighboring tiles).
@@ -202,19 +229,25 @@ class DEMISSynthesizer():
                 start_position[1] += random.randrange(translate_shifts[1])
 
             # Find the center and end positions of the tile.
-            center_position = (start_position[0] + tile_resolution[0] // 2,
-                               start_position[1] + tile_resolution[1] // 2)
-            end_position = (start_position[0] + tile_resolution[0],
-                            start_position[1] + tile_resolution[1])
+            center_position = (
+                start_position[0] + tile_resolution[0] // 2,
+                start_position[1] + tile_resolution[1] // 2,
+            )
+            end_position = (
+                start_position[0] + tile_resolution[0],
+                start_position[1] + tile_resolution[1],
+            )
 
             # Apply random rotation around the tile center position.
-            rotated_img, rotation_angle = self._random_rotation(img, center_position,
-                                                                previous_angle)
+            rotated_img, rotation_angle = self._random_rotation(
+                img, center_position, previous_angle
+            )
             previous_angle = rotation_angle
 
             # Crop the tile.
-            img_tile = rotated_img[start_position[1]:end_position[1],
-                                   start_position[0]:end_position[0]].copy()
+            img_tile = rotated_img[
+                start_position[1] : end_position[1], start_position[0] : end_position[0]
+            ].copy()
 
             # Apply all remaining data augmentations.
             if self.config.AUGMENTATIONS["gaussian_noise"] is not None:

@@ -1,24 +1,49 @@
 """Synthesizes LoFTR splits and the corresponding LoFTR split indices
 for the DEMIS dataset."""
+import argparse
 import numpy as np
 import os
 from numpy.random import permutation
 from src.config.config import get_cfg_defaults
 from src.dataset.demis_loader import DemisLoader
-from src.pipeline.image_cache import ImageCache
+from src.pipeline.image_loader import ImageLoader
 from src.pipeline.demis_stitcher import DemisStitcher
 
 
-# TODO: Replace with CLI parameterization.
 if __name__ == "__main__":
+    # Parse arguments.
+    parser = argparse.ArgumentParser(description="DEMIS dataset splitter")
+    parser.add_argument(
+        "cfg_path", type=str, help="path to DEMIS stitching configuration"
+    )
+    parser.add_argument(
+        "-v",
+        "--validation-grids",
+        type=int,
+        default=60,
+        help="number of image grids for validation",
+    )
+    parser.add_argument(
+        "-t",
+        "--test-grids",
+        type=int,
+        default=60,
+        help="number of image grids for testing",
+    )
+    args = parser.parse_args()
+
+    # Check path validity.
+    if not os.access(args.cfg_path, os.R_OK):
+        raise ValueError(f"Cannot read configuration file {args.cfg_path}.")
+
+    # Configure split sizes.
     train_split_size = None
-    val_split_size = 60
-    test_split_size = 60
-    demis_config_path = "configs/eval.yaml"
+    val_split_size = max(args.validation_grids, 0)
+    test_split_size = max(args.test_grids, 0)
 
     # Configure paths.
     cfg = get_cfg_defaults()
-    cfg.merge_from_file(demis_config_path)
+    cfg.merge_from_file(args.cfg_path)
     cfg.freeze()
     indices_dir = os.path.join(cfg.DATASET.PATH, "indices")
     splits_dir = os.path.join(cfg.DATASET.PATH, "splits")
@@ -29,7 +54,7 @@ if __name__ == "__main__":
     full_image_paths = loader.load_paths(labels)
 
     # Prepare for homography calculation.
-    cache = ImageCache(cfg)
+    cache = ImageLoader(cfg)
     stitcher = DemisStitcher(cfg, cache)
 
     # Generate a set of LoFTR indices for each labels file.
@@ -37,12 +62,14 @@ if __name__ == "__main__":
     os.makedirs(indices_dir, exist_ok=True)
     os.makedirs(splits_dir, exist_ok=True)
     for i, grid_labels in enumerate(labels):
-        grid_title = os.path.splitext(os.path.basename(grid_labels['path']))[0]
+        grid_title = os.path.splitext(os.path.basename(grid_labels["path"]))[0]
         split_filenames.append(grid_title)
         tile_labels = grid_labels["tile_labels"]
         tile_paths = full_image_paths[f"{i}_0"]
-        print(f"[{i + 1}/{len(labels)}] Generating indices for labels file "
-              f"{grid_title}...")
+        print(
+            f"[{i + 1}/{len(labels)}] Generating indices for labels file "
+            f"{grid_title}..."
+        )
 
         # Go over all possible image pairs in the grid (scene) and add them to the
         # scene info.
@@ -57,9 +84,7 @@ if __name__ == "__main__":
             grid_size = tile_paths.shape
             index = row * grid_size[1] + col
             if row < (grid_size[0] - 1):
-                pair_infos.append(
-                    np.array([index, (row + 1) * grid_size[1] + col])
-                )
+                pair_infos.append(np.array([index, (row + 1) * grid_size[1] + col]))
             if col < (grid_size[1] - 1):
                 pair_infos.append(np.array([index, index + 1]))
 
@@ -67,8 +92,7 @@ if __name__ == "__main__":
             # constant at 1).
             pose = np.identity(4)
             homography_gt = stitcher.get_transformation_to_reference(
-                tile_labels=tile_labels[index],
-                grid_labels=grid_labels
+                tile_labels=tile_labels[index], grid_labels=grid_labels
             )
             pose[[0, 1, 3], :2] = homography_gt[:, :2]
             pose[[0, 1, 3], 3] = homography_gt[:, 2]
@@ -76,9 +100,12 @@ if __name__ == "__main__":
 
         # Save the indices.
         output_path = os.path.join(indices_dir, f"{grid_title}.npz")
-        np.savez_compressed(output_path, image_paths=np.array(image_paths),
-                            pair_infos=np.array(pair_infos),
-                            poses=np.array(poses))
+        np.savez_compressed(
+            output_path,
+            image_paths=np.array(image_paths),
+            pair_infos=np.array(pair_infos),
+            poses=np.array(poses),
+        )
 
     # Create split lists.
     if val_split_size + test_split_size >= len(labels):
@@ -91,12 +118,13 @@ if __name__ == "__main__":
         file_val.write("\n".join(permutation(split_filenames_val)))
 
     output_path_test = os.path.join(splits_dir, "test_list.txt")
-    split_filenames_test = \
-        split_filenames[val_split_size:val_split_size + test_split_size]
+    split_filenames_test = split_filenames[
+        val_split_size : val_split_size + test_split_size
+    ]
     with open(output_path_test, "w") as file_test:
         file_test.write("\n".join(permutation(split_filenames_test)))
 
     output_path_train = os.path.join(splits_dir, "train_list.txt")
-    split_filenames_train = split_filenames[val_split_size + test_split_size:]
+    split_filenames_train = split_filenames[val_split_size + test_split_size :]
     with open(output_path_train, "w") as file_train:
         file_train.write("\n".join(permutation(split_filenames_train)))

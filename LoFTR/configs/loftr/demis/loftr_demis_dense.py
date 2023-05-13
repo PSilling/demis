@@ -1,12 +1,11 @@
 from src.config.default import _CN as cfg
 
 cfg.LOFTR.MATCH_COARSE.MATCH_TYPE = 'dual_softmax'
-cfg.LOFTR.MATCH_COARSE.SPARSE_SPVS = False
 
-cfg.TRAINER.CANONICAL_LR = 8e-3
+cfg.TRAINER.CANONICAL_LR = 1e-5
 cfg.TRAINER.WARMUP_STEP = 100
 cfg.TRAINER.WARMUP_RATIO = 0.1
-cfg.TRAINER.MSLR_MILESTONES = [4, 6, 8, 10, 12]
+cfg.TRAINER.MSLR_MILESTONES = [4, 6, 8]
 
 # pose estimation
 cfg.TRAINER.RANSAC_PIXEL_THR = 0.5

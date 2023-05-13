@@ -9,6 +9,8 @@ tmp.*
 
 logs/
 weights/
+datasets/
+output/
 dump/
 demo/*.mp4
 demo/demo_images/

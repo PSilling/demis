@@ -21,9 +21,16 @@ class TileStitcher:
         :param img: Image to resize.
         :return: Resized image.
         """
-        # TODO: add max resolution check
         ratio = self.cfg.STITCHER.RESOLUTION_RATIO
         divisibility = self.cfg.STITCHER.RESOLUTION_DIVISIBILITY
+
+        # Respect maximum resolution.
+        if round(img.shape[1] * ratio) > self.cfg.STITCHER.MAX_RESOLUTION:
+            ratio = self.cfg.STITCHER.MAX_RESOLUTION / img.shape[1]
+        if round(img.shape[0] * ratio) > self.cfg.STITCHER.MAX_RESOLUTION:
+            ratio = self.cfg.STITCHER.MAX_RESOLUTION / img.shape[0]
+
+        # Resize the image if necessary.
         if ratio != 1.0 or divisibility != 1:
             new_width = int(round(img.shape[1] * ratio) // divisibility * divisibility)
             new_height = int(round(img.shape[0] * ratio) // divisibility * divisibility)
@@ -40,13 +47,13 @@ class TileStitcher:
         height, width = img.shape
         overlap = self.cfg.DATASET.TILE_OVERLAP
         if side == "t":
-            return img[-round(height * overlap):, :]
+            return img[-round(height * overlap) :, :]
         if side == "b":
-            return img[:round(height * overlap), :]
+            return img[: round(height * overlap), :]
         if side == "l":
-            return img[:, -round(width * overlap):]
+            return img[:, -round(width * overlap) :]
         if side == "r":
-            return img[:, :round(width * overlap)]
+            return img[:, : round(width * overlap)]
 
         raise ValueError(f"Invalid crop side: {side}")
 
@@ -143,14 +150,18 @@ class TileStitcher:
             matches2 = np.float32([kps2[m.trainIdx].pt for [m] in matches])
             conf = np.float32(conf)
         else:
-            raise ValueError("Invalid feature matching method: "
-                             f"{self.cfg.STITCHER.MATCHING_METHOD}")
+            raise ValueError(
+                "Invalid feature matching method: "
+                f"{self.cfg.STITCHER.MATCHING_METHOD}"
+            )
 
         # Convert keypoint coordinates to full image space.
-        matches1 = self.correct_keypoint_positions(matches1, img1_full, img1,
-                                                   img1_position)
-        matches2 = self.correct_keypoint_positions(matches2, img2_full, img2,
-                                                   img2_position)
+        matches1 = self.correct_keypoint_positions(
+            matches1, img1_full, img1, img1_position
+        )
+        matches2 = self.correct_keypoint_positions(
+            matches2, img2_full, img2, img2_position
+        )
         return matches1, matches2, conf
 
     def stitch_tile(self, combined_image, tile_node, translation=None):
@@ -174,8 +185,9 @@ class TileStitcher:
             M = translation @ M
 
         # Warp the image tile.
-        img_result = cv2.warpPerspective(img_tile, M, (width, height),
-                                         flags=cv2.INTER_NEAREST)
+        img_result = cv2.warpPerspective(
+            img_tile, M, (width, height), flags=cv2.INTER_NEAREST
+        )
 
         # Compose the final image.
         if self.cfg.STITCHER.COMPOSITING_METHOD == "overwrite":
@@ -187,14 +199,16 @@ class TileStitcher:
             mask_both = (combined_image > 0) & (img_result > 0)
             mask_combined_only = (combined_image > 0) & (img_result == 0)
 
-            img_result[mask_both] = (0.5 * combined_image[mask_both]
-                                     + 0.5 * img_result[mask_both])
+            img_result[mask_both] = (
+                0.5 * combined_image[mask_both] + 0.5 * img_result[mask_both]
+            )
             img_result[mask_combined_only] = combined_image[mask_combined_only]
             img_result = np.rint(img_result).astype("uint8")
         elif self.cfg.STITCHER.COMPOSITING_METHOD == "adaptive":
             # Calculate adaptive weights for the top left region of the original tile.
-            center = np.ceil((img_tile.shape[1] / 2,
-                              img_tile.shape[0] / 2)).astype("int")
+            center = np.ceil((img_tile.shape[1] / 2, img_tile.shape[0] / 2)).astype(
+                "int"
+            )
             first_weights = (1 / center[0], 1 / center[1])
             last_weight = 0.5 / self.cfg.DATASET.TILE_OVERLAP
 
@@ -206,16 +220,20 @@ class TileStitcher:
 
             # Distribute the weights symmetrically to the whole image.
             weights = np.zeros((img_tile.shape[0], img_tile.shape[1]))
-            weights[:weights_top_left.shape[0],
-                    :weights_top_left.shape[1]] = weights_top_left
-            weights[:weights_top_left.shape[0],
-                    -weights_top_left.shape[1]:] = weights_top_left[:, ::-1]
-            weights[-weights_top_left.shape[0]:] = \
-                weights[:weights_top_left.shape[0]:][::-1]
+            weights[
+                : weights_top_left.shape[0], : weights_top_left.shape[1]
+            ] = weights_top_left
+            weights[
+                : weights_top_left.shape[0], -weights_top_left.shape[1] :
+            ] = weights_top_left[:, ::-1]
+            weights[-weights_top_left.shape[0] :] = weights[
+                : weights_top_left.shape[0] :
+            ][::-1]
 
             # Warp the weights array the same way as the image tile.
-            weights = cv2.warpPerspective(weights, M, (width, height),
-                                          flags=cv2.INTER_NEAREST)
+            weights = cv2.warpPerspective(
+                weights, M, (width, height), flags=cv2.INTER_NEAREST
+            )
 
             # Correct dimensionality.
             if img_tile.ndim > 2:
@@ -226,14 +244,14 @@ class TileStitcher:
             # be weighted more heavily than those near the edges.
             mask_both = (combined_image > 0) & (img_result > 0)
             mask_combined_only = (combined_image > 0) & (img_result == 0)
-            img_result[mask_both] = (
-                (1 - weights[mask_both]) * combined_image[mask_both]
-                + weights[mask_both] * img_result[mask_both]
-            )
+            img_result[mask_both] = (1 - weights[mask_both]) * combined_image[
+                mask_both
+            ] + weights[mask_both] * img_result[mask_both]
             img_result[mask_combined_only] = combined_image[mask_combined_only]
             img_result = np.rint(img_result).astype("uint8")
         else:
-            raise ValueError("Invalid compositing method: "
-                             f"{self.cfg.STITCHER.COMPOSITING_METHOD}")
+            raise ValueError(
+                "Invalid compositing method: " f"{self.cfg.STITCHER.COMPOSITING_METHOD}"
+            )
 
         return img_result

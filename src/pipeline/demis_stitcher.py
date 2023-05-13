@@ -16,27 +16,26 @@ class DemisStitcher(GridStitcher):
         :param grid_labels: Labels of images in the grid that contains the tile labels.
         :return: Calculated transformation matrix.
         """
-        # Use the initial tile for rotation as it has no random rotation.
+        # Use the initial tile as reference as it has no random rotation.
         reference_labels = grid_labels["tile_labels"][0]
 
         # Calculate translational shifts.
         x_shift = tile_labels["position"][0] - reference_labels["position"][0]
         y_shift = tile_labels["position"][1] - reference_labels["position"][1]
-        T = np.array([[1, 0, x_shift],
-                      [0, 1, y_shift],
-                      [0, 0,       1]])
+        T = np.array([[1, 0, x_shift], [0, 1, y_shift], [0, 0, 1]])
 
         # Get the rotation matrix.
         angle_difference = -tile_labels["angle"]
-        rotation_center = (grid_labels["tile_resolution"][0] // 2 + x_shift,
-                           grid_labels["tile_resolution"][1] // 2 + y_shift)
+        rotation_center = (
+            grid_labels["tile_resolution"][0] // 2 + x_shift,
+            grid_labels["tile_resolution"][1] // 2 + y_shift,
+        )
         R = np.identity(3)
         R[:2, :] = cv2.getRotationMatrix2D(rotation_center, angle_difference, 1)
 
         return R @ T
 
-    def get_transformation_between_tiles(self, tile_labels1, tile_labels2,
-                                         grid_labels):
+    def get_transformation_between_tiles(self, tile_labels1, tile_labels2, grid_labels):
         """Get the transformation matrix from the coordinate space of one tile
         to another.
 
@@ -64,30 +63,44 @@ class DemisStitcher(GridStitcher):
         if self.cfg.STITCHER.ROOT_TILE:
             root_position = self.cfg.STITCHER.ROOT_TILE
         else:
-            root_position = (grid_labels["grid_size"][0] // 2,
-                             grid_labels["grid_size"][1] // 2)
+            root_position = (
+                grid_labels["grid_size"][0] // 2,
+                grid_labels["grid_size"][1] // 2,
+            )
 
-        root_labels = [tile_labels for tile_labels in grid_labels["tile_labels"]
-                       if tile_labels["grid_position"] == root_position]
+        root_labels = [
+            tile_labels
+            for tile_labels in grid_labels["tile_labels"]
+            if tile_labels["grid_position"] == root_position
+        ]
         if not root_labels:
             raise ValueError(f"Invalid root tile position selected: {root_position}")
         root_labels = root_labels[0]
 
         # Create the root node.
-        tile_nodes = [TileNode(cfg=self.cfg,
-                               img=self.cache.load_img(root_labels["path"]),
-                               position=root_position,
-                               transformation=np.identity(3))]
+        tile_nodes = [
+            TileNode(
+                cfg=self.cfg,
+                img=self.img_loader.load_img(root_labels["path"]),
+                position=root_position,
+                transformation=np.identity(3),
+            )
+        ]
 
         # Connect all remaining tiles to the root node.
         for tile_labels in grid_labels["tile_labels"]:
             if tile_labels["grid_position"] != root_position:
-                M = self.get_transformation_between_tiles(tile_labels, root_labels,
-                                                          grid_labels)
-                tile_nodes.append(TileNode(cfg=self.cfg,
-                                           img=self.cache.load_img(tile_labels["path"]),
-                                           position=tile_labels["grid_position"],
-                                           parent=tile_nodes[0],
-                                           transformation=M))
+                M = self.get_transformation_between_tiles(
+                    tile_labels, root_labels, grid_labels
+                )
+                tile_nodes.append(
+                    TileNode(
+                        cfg=self.cfg,
+                        img=self.img_loader.load_img(tile_labels["path"]),
+                        position=tile_labels["grid_position"],
+                        parent=tile_nodes[0],
+                        transformation=M,
+                    )
+                )
 
-        return self._stitch_mst_nodes(tile_nodes)
+        return self.stitch_mst_nodes(tile_nodes)

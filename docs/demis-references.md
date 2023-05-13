@@ -1,8 +1,7 @@
-# Synthetic Source Dataset
+# References for the Source Images of the DEMIS Dataset
 
-Most images were taken from [EMPIAR](https://www.ebi.ac.uk/empiar/) and
-[Cell Image Library](http://cellimagelibrary.org/). All remaining images were provided
-by [TESCAN 3DIM](https://www.tescan3dim.com/). References always correspond to all
+The source images were retrieved from [EMPIAR](https://www.ebi.ac.uk/empiar/) and
+[Cell Image Library](http://cellimagelibrary.org/). References always correspond to all
 images with the preceding image name prefix.
 
 ## EMPIAR Images
@@ -152,11 +151,3 @@ images with the preceding image name prefix.
   - `cil_sosinsky_01_*`
     
     Gina Sosinsky, Alice Ting, Jeff Martell, Mark Ellisman, Thomas Deerinck (2011) CCDB:83884, NA. CIL. Dataset. https://doi.org/doi:10.7295/W9CCDB83884
-
-## TESCAN-3DIM Images
-
-  - `tescan_3dim_01_*`
-  - `tescan_3dim_02_*`
-
-We thank [TESCAN 3DIM](https://www.tescan3dim.com/) for providing several data samples
-for research purposes.
