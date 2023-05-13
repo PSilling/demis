@@ -1,7 +1,7 @@
 # DEMIS: Deep Electron Microscopy Image Stitching
 
 Electron microscopy (EM) image stitching based on [LoFTR](https://github.com/zju3dv/LoFTR)
-feature matching. Details presented on [Excel@FIT2023](https://excel.fit.vutbr.cz/)
+feature matching. Details presented on [Excel@FIT 2023](https://excel.fit.vutbr.cz/)
 ([Poster](https://excel.fit.vutbr.cz/submissions/2023/015/15_poster.pdf),
 [Commentary](https://excel.fit.vutbr.cz/submissions/2023/015/15.pdf)), a student
 conference held by the Faculty of Information Technology, Brno University of Technology.
@@ -69,11 +69,13 @@ high-resolution EM images publicly available on [EMPIAR](https://www.ebi.ac.uk/e
 or [The Cell Image Library](http://www.cellimagelibrary.org/). Each selected image was
 divided into a grid of overlapping image tiles of size 1024&times;1024 pixels. Additionally,
 random brightness and contrast changes, random rotation, random translation, and Gaussian
-noise were applied to each tile. Due to data hosting limitations, there are currently no
-plans to make the dataset publicly available. However, the source projects of the selected
-images can be found in [docs/demis-references.md](docs/demis-references.md). By selecting
-and downloading sample images from the sourced projects, it is possible to generate
-a new version of the DEMIS dataset using the following scripts.
+noise were applied to each tile. The dataset and its source images can be downloaded
+from FIT NextCloud: [source images](https://nextcloud.fit.vutbr.cz/s/773XXbQdYBGKxKH),
+[DEMIS dataset](https://nextcloud.fit.vutbr.cz/s/R3GAr2JcSQFeyi6). The references for
+the source images images can be found in [docs/demis-references.md](docs/demis-references.md).
+
+It is also possible to generate a new version of the DEMIS dataset using the following
+scripts.
 
   1. [scripts/synthesize_demis.py](scripts/synthesize_demis.py) &ndash; Synthesises DEMIS
   from the directory that contains the EM images to split.
