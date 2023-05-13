@@ -103,7 +103,7 @@ class DemisLoader(DatasetLoader):
         if not labels:
             labels = self.load_labels()
 
-        # Convert labels to a image path dictionary.
+        # Convert labels to an image path dictionary.
         image_paths = {}
         for grid_labels in labels:
             paths = [tile_labels["path"] for tile_labels in grid_labels["tile_labels"]]
