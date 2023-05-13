@@ -1,4 +1,9 @@
-"""Stitches grids of EM images using the DEMIS tool."""
+"""Stitches grids of EM images using the DEMIS tool.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import argparse
 import cv2
 import os

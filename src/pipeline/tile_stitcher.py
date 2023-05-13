@@ -1,3 +1,9 @@
+"""Stitcher of pairs of overlapping image tiles.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import cv2
 import numpy as np
 import torch

@@ -1,4 +1,9 @@
-"""Evaluates the DEMIS tool on the DEMIS dataset."""
+"""Evaluates the DEMIS tool on the DEMIS dataset.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import argparse
 import os
 from src.config.config import get_cfg_defaults

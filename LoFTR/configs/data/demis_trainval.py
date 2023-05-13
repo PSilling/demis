@@ -1,7 +1,13 @@
+"""DEMIS dataset structure specification.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 from configs.data.base import cfg
 
 
-TRAIN_BASE_PATH = "../../../datasets/DEMIS"
+TRAIN_BASE_PATH = "../datasets/DEMIS"
 cfg.DATASET.TRAINVAL_DATA_SOURCE = "DEMIS"
 cfg.DATASET.TRAIN_DATA_ROOT = f"{TRAIN_BASE_PATH}/images"
 cfg.DATASET.TRAIN_NPZ_ROOT = f"{TRAIN_BASE_PATH}/indices"

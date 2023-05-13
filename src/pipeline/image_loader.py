@@ -1,8 +1,14 @@
+"""Image tile loader.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import cv2
 
 
 class ImageLoader:
-    """Cache for image tiles."""
+    """Loader of image tiles."""
 
     def __init__(self, cfg):
         """ImageLoader constructor.

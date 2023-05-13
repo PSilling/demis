@@ -1,3 +1,9 @@
+"""DEMIS dataset loader.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import os.path as osp
 import numpy as np
 import torch

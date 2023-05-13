@@ -1,5 +1,9 @@
-"""Default DEMIS pipeline configuration."""
+"""Default DEMIS pipeline configuration.
 
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 from yacs.config import CfgNode as CN
 
 

@@ -1,6 +1,6 @@
 from configs.data.base import cfg
 
-TEST_BASE_PATH = "../../../datasets/megadepth"
+TEST_BASE_PATH = "assets/megadepth_test_1500_scene_info"
 
 cfg.DATASET.TEST_DATA_SOURCE = "MegaDepth"
 cfg.DATASET.TEST_DATA_ROOT = f"{TEST_BASE_PATH}/megadepth_test_1500"

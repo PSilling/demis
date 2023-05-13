@@ -1,5 +1,10 @@
 """Synthesizes LoFTR splits and the corresponding LoFTR split indices
-for the DEMIS dataset."""
+for the DEMIS dataset.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import argparse
 import numpy as np
 import os

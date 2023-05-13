@@ -1,3 +1,9 @@
+"""DEMIS dataset loader.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import re
 import os
 from glob import glob

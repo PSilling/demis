@@ -1,9 +1,15 @@
 #!/bin/bash -l
 
+# DEMIS training execution script.
+# 
+# Project: Deep Electron Microscopy Image Stitching (DEMIS)
+# Author: Petr Šilling
+# Year: 2023
+
 SCRIPTPATH=$(dirname $(readlink -f "$0"))
 PROJECT_DIR="${SCRIPTPATH}/../../"
 
-# conda activate loftr
+# conda activate demis
 export PYTHONPATH=$PROJECT_DIR:$PYTHONPATH
 cd $PROJECT_DIR
 

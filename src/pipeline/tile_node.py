@@ -1,3 +1,9 @@
+"""Tree node representing an image tile.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import cv2
 import numpy as np
 from dataclasses import dataclass, field

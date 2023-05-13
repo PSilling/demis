@@ -5,11 +5,12 @@ feature matching. Details presented on [Excel@FIT 2023](https://excel.fit.vutbr.
 ([Poster](https://excel.fit.vutbr.cz/submissions/2023/015/15_poster.pdf),
 [Commentary](https://excel.fit.vutbr.cz/submissions/2023/015/15.pdf)), a student
 conference held by the Faculty of Information Technology, Brno University of Technology.
+Created as part of a Master's thesis: Deep Learning for Image Stitching.
 
 ## Environment Setup
 
 The following commands can be used to prepare the working environment. A CUDA-enabled
-machine is necessary.
+machine is required.
 
 ```
 conda env create -f environment.yml
@@ -77,7 +78,7 @@ the source images images can be found in [docs/demis-references.md](docs/demis-r
 It is also possible to generate a new version of the DEMIS dataset using the following
 scripts.
 
-  1. [scripts/synthesize_demis.py](scripts/synthesize_demis.py) &ndash; Synthesises DEMIS
+  1. [scripts/synthesize_demis.py](scripts/synthesize_demis.py) &ndash; Synthesizes DEMIS
   from the directory that contains the EM images to split.
   
   2. [scripts/generate_demis_splits.py](scripts/generate_demis_splits.py) &ndash; Generates
@@ -163,8 +164,7 @@ added to the official implementation of LoFTR.
     &ndash; DEMIS dataset loader class.
 
 More details can be found in the official
-[training documentation](https://github.com/zju3dv/LoFTR/blob/master/docs/TRAINING.md)
-of LoFTR. 
+[training documentation](LoFTR/docs/TRAINING.md) of LoFTR. 
 
 ## References
 

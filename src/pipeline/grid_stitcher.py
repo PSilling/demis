@@ -1,3 +1,9 @@
+"""Generic stitcher of grids of overlapping images.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import cv2
 import io
 import matplotlib.cm as cm

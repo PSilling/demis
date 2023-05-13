@@ -1,3 +1,9 @@
+"""DEMIS training configuration.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 from src.config.default import _CN as cfg
 
 cfg.LOFTR.MATCH_COARSE.MATCH_TYPE = 'dual_softmax'

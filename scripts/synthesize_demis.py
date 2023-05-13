@@ -1,4 +1,9 @@
-"""Synthesizes the DEMIS dataset."""
+"""Synthesizes the DEMIS dataset.
+
+Project: Deep Electron Microscopy Image Stitching (DEMIS)
+Author: Petr Šilling
+Year: 2023
+"""
 import argparse
 import re
 from src.dataset.demis_synthesizer import DEMISSynthesizer, DEMISSynthesizerConfig
