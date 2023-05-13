@@ -621,8 +621,6 @@ class GridStitcher:
         :param prefix: Optional output prefix.
         :param color_conf: Whether to color code matches based on confidence scores.
         """
-        if position[1] == position_neigh[1]:
-            return
         # Get transform settings.
         min_samples = 3
         if self.cfg.STITCHER.TRANSFORM_TYPE == "affine":
