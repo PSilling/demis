@@ -87,6 +87,7 @@ scripts.
 The scripts should be executed as modules from the root directory. For example:
 
 ```
+conda activate demis
 python3 -m scripts.synthesize_demis <directory_with_source_images> <output_directory>
 python3 -m scripts.generate_demis_splits configs/demis-fine-tuned.yaml
 ```
