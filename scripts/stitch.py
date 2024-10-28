@@ -4,25 +4,23 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
 import argparse
-import cv2
 import os
 import re
+
+import cv2
+
 from src.config.config import get_cfg_defaults
 from src.dataset.dataset_loader import DatasetLoader
 from src.dataset.demis_loader import DemisLoader
 from src.pipeline.demis_stitcher import DemisStitcher
 from src.pipeline.image_loader import ImageLoader
 
-
 if __name__ == "__main__":
     # Parse arguments.
-    parser = argparse.ArgumentParser(
-        description="DEMIS tool for stitching grids of electron microscopy images"
-    )
-    parser.add_argument(
-        "cfg_path", type=str, help="path to DEMIS stitching configuration"
-    )
+    parser = argparse.ArgumentParser(description="DEMIS tool for stitching grids of electron microscopy images")
+    parser.add_argument("cfg_path", type=str, help="path to DEMIS stitching configuration")
     parser.add_argument(
         "-d",
         "--use-demis-labels",
@@ -70,9 +68,7 @@ if __name__ == "__main__":
 
     # Parse the selected grid and slice indices.
     selected_grids = [int(i) for i in args.grid_indices] if args.grid_indices else None
-    selected_slices = (
-        [int(i) for i in args.slice_indices] if args.slice_indices else None
-    )
+    selected_slices = [int(i) for i in args.slice_indices] if args.slice_indices else None
 
     # Setup the output directory.
     os.makedirs(cfg.STITCHER.OUTPUT_PATH, exist_ok=True)
@@ -87,14 +83,12 @@ if __name__ == "__main__":
             # Select grids to stitch.
             match = re.search(r"g(\d+)", os.path.basename(grid_labels["path"]))
             if match is None:
-                raise ValueError(
-                    "Cannot parse labels file name: " f"{grid_labels['path']}."
-                )
+                raise ValueError("Cannot parse labels file name: " f"{grid_labels['path']}.")
             grid_index = int(match.groups()[0])
             slice_index = 0  # The DEMIS dataset has no slices.
-            if (
-                selected_grids is not None and int(grid_index) not in selected_grids
-            ) or (selected_slices is not None and slice_index not in selected_slices):
+            if (selected_grids is not None and int(grid_index) not in selected_grids) or (
+                selected_slices is not None and slice_index not in selected_slices
+            ):
                 continue
 
             # Report on current progress.
@@ -114,18 +108,13 @@ if __name__ == "__main__":
         for path_key, tile_paths in image_paths.items():
             # Select grids to stitch.
             grid_index, slice_index = path_key.split("_")
-            if (
-                selected_grids is not None and int(grid_index) not in selected_grids
-            ) or (
+            if (selected_grids is not None and int(grid_index) not in selected_grids) or (
                 selected_slices is not None and int(slice_index) not in selected_slices
             ):
                 continue
 
             # Report on current progress.
-            print(
-                f"[{index}/{length}] Stitching the grid starting with image "
-                f"{tile_paths[0, 0]}..."
-            )
+            print(f"[{index}/{length}] Stitching the grid starting with image " f"{tile_paths[0, 0]}...")
             index += 1
 
             # Stitch the grid and save the result.

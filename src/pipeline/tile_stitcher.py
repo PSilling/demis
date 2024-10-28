@@ -4,6 +4,7 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
 import cv2
 import numpy as np
 import torch
@@ -69,8 +70,7 @@ class TileStitcher:
         :param kpts: Keypoints array.
         :param img_full: Complete uncropped image.
         :param img_crop: Cropped image.
-        :param side: From which side cropping was performed (t/b/l/r for
-                     top/bottom/left/right).
+        :param side: From which side cropping was performed (t/b/l/r for top/bottom/left/right).
         :return: Cropped image.
         """
         height_crop, width_crop = img_crop.shape
@@ -95,8 +95,7 @@ class TileStitcher:
 
     def compute_matches(self, img1_full, img2_full, horizontal=True):
         """
-        Compute matches between a pair of images using the selected method (LoFTR or
-        SIFT).
+        Compute matches between a pair of images using the selected method.
 
         :param img1_full: Uncropped left/top image.
         :param img2_full: Uncropped light/bottom image.
@@ -156,18 +155,11 @@ class TileStitcher:
             matches2 = np.float32([kps2[m.trainIdx].pt for [m] in matches])
             conf = np.float32(conf)
         else:
-            raise ValueError(
-                "Invalid feature matching method: "
-                f"{self.cfg.STITCHER.MATCHING_METHOD}"
-            )
+            raise ValueError("Invalid feature matching method: " f"{self.cfg.STITCHER.MATCHING_METHOD}")
 
         # Convert keypoint coordinates to full image space.
-        matches1 = self.correct_keypoint_positions(
-            matches1, img1_full, img1, img1_position
-        )
-        matches2 = self.correct_keypoint_positions(
-            matches2, img2_full, img2, img2_position
-        )
+        matches1 = self.correct_keypoint_positions(matches1, img1_full, img1, img1_position)
+        matches2 = self.correct_keypoint_positions(matches2, img2_full, img2, img2_position)
         return matches1, matches2, conf
 
     def stitch_tile(self, combined_image, tile_node, translation=None):
@@ -191,9 +183,7 @@ class TileStitcher:
             M = translation @ M
 
         # Warp the image tile.
-        img_result = cv2.warpPerspective(
-            img_tile, M, (width, height), flags=cv2.INTER_NEAREST
-        )
+        img_result = cv2.warpPerspective(img_tile, M, (width, height), flags=cv2.INTER_NEAREST)
 
         # Compose the final image.
         if self.cfg.STITCHER.COMPOSITING_METHOD == "overwrite":
@@ -205,16 +195,12 @@ class TileStitcher:
             mask_both = (combined_image > 0) & (img_result > 0)
             mask_combined_only = (combined_image > 0) & (img_result == 0)
 
-            img_result[mask_both] = (
-                0.5 * combined_image[mask_both] + 0.5 * img_result[mask_both]
-            )
+            img_result[mask_both] = 0.5 * combined_image[mask_both] + 0.5 * img_result[mask_both]
             img_result[mask_combined_only] = combined_image[mask_combined_only]
             img_result = np.rint(img_result).astype("uint8")
         elif self.cfg.STITCHER.COMPOSITING_METHOD == "adaptive":
             # Calculate adaptive weights for the top left region of the original tile.
-            center = np.ceil((img_tile.shape[1] / 2, img_tile.shape[0] / 2)).astype(
-                "int"
-            )
+            center = np.ceil((img_tile.shape[1] / 2, img_tile.shape[0] / 2)).astype("int")
             first_weights = (1 / center[0], 1 / center[1])
             last_weight = 0.5 / self.cfg.DATASET.TILE_OVERLAP
 
@@ -226,20 +212,12 @@ class TileStitcher:
 
             # Distribute the weights symmetrically to the whole image.
             weights = np.zeros((img_tile.shape[0], img_tile.shape[1]))
-            weights[
-                : weights_top_left.shape[0], : weights_top_left.shape[1]
-            ] = weights_top_left
-            weights[
-                : weights_top_left.shape[0], -weights_top_left.shape[1] :
-            ] = weights_top_left[:, ::-1]
-            weights[-weights_top_left.shape[0] :] = weights[
-                : weights_top_left.shape[0] :
-            ][::-1]
+            weights[: weights_top_left.shape[0], : weights_top_left.shape[1]] = weights_top_left
+            weights[: weights_top_left.shape[0], -weights_top_left.shape[1] :] = weights_top_left[:, ::-1]
+            weights[-weights_top_left.shape[0] :] = weights[: weights_top_left.shape[0] :][::-1]
 
             # Warp the weights array the same way as the image tile.
-            weights = cv2.warpPerspective(
-                weights, M, (width, height), flags=cv2.INTER_NEAREST
-            )
+            weights = cv2.warpPerspective(weights, M, (width, height), flags=cv2.INTER_NEAREST)
 
             # Correct dimensionality.
             if img_tile.ndim > 2:
@@ -250,14 +228,12 @@ class TileStitcher:
             # be weighted more heavily than those near the edges.
             mask_both = (combined_image > 0) & (img_result > 0)
             mask_combined_only = (combined_image > 0) & (img_result == 0)
-            img_result[mask_both] = (1 - weights[mask_both]) * combined_image[
+            img_result[mask_both] = (1 - weights[mask_both]) * combined_image[mask_both] + weights[
                 mask_both
-            ] + weights[mask_both] * img_result[mask_both]
+            ] * img_result[mask_both]
             img_result[mask_combined_only] = combined_image[mask_combined_only]
             img_result = np.rint(img_result).astype("uint8")
         else:
-            raise ValueError(
-                "Invalid compositing method: " f"{self.cfg.STITCHER.COMPOSITING_METHOD}"
-            )
+            raise ValueError("Invalid compositing method: " f"{self.cfg.STITCHER.COMPOSITING_METHOD}")
 
         return img_result

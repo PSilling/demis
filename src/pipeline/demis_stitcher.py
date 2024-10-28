@@ -4,8 +4,10 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
 import cv2
 import numpy as np
+
 from src.pipeline.grid_stitcher import GridStitcher
 from src.pipeline.tile_node import TileNode
 
@@ -75,9 +77,7 @@ class DemisStitcher(GridStitcher):
             )
 
         root_labels = [
-            tile_labels
-            for tile_labels in grid_labels["tile_labels"]
-            if tile_labels["grid_position"] == root_position
+            tile_labels for tile_labels in grid_labels["tile_labels"] if tile_labels["grid_position"] == root_position
         ]
         if not root_labels:
             raise ValueError(f"Invalid root tile position selected: {root_position}")
@@ -96,9 +96,7 @@ class DemisStitcher(GridStitcher):
         # Connect all remaining tiles to the root node.
         for tile_labels in grid_labels["tile_labels"]:
             if tile_labels["grid_position"] != root_position:
-                M = self.get_transformation_between_tiles(
-                    tile_labels, root_labels, grid_labels
-                )
+                M = self.get_transformation_between_tiles(tile_labels, root_labels, grid_labels)
                 tile_nodes.append(
                     TileNode(
                         cfg=self.cfg,

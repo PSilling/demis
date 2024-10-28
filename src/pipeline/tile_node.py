@@ -4,9 +4,11 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
+from dataclasses import dataclass, field
+
 import cv2
 import numpy as np
-from dataclasses import dataclass, field
 
 
 class TileNode:
@@ -39,11 +41,7 @@ class TileNode:
         self.matches = matches
         self.matches_parent = matches_parent
         self.transformation = transformation
-        if (
-            transformation is not None
-            and parent is not None
-            and parent.transformation is not None
-        ):
+        if transformation is not None and parent is not None and parent.transformation is not None:
             self.transformation = parent.transformation.dot(transformation)
 
     def estimate_transformation(self):
@@ -75,9 +73,7 @@ class TileNode:
                 self.cfg.STITCHER.RANSAC_THRESHOLD,
             )
         else:
-            raise ValueError(
-                "Invalid transform type: " f"{self.cfg.STITCHER.TRANSFORM_TYPE}"
-            )
+            raise ValueError("Invalid transform type: " f"{self.cfg.STITCHER.TRANSFORM_TYPE}")
 
         # Add the parent transformation if present.
         if self.parent:
@@ -89,10 +85,7 @@ class TileNode:
 
         :return: Updated translation values and angle.
         """
-        if (
-            self.transformation is None
-            or self.cfg.STITCHER.TRANSFORM_TYPE == "perspective"
-        ):
+        if self.transformation is None or self.cfg.STITCHER.TRANSFORM_TYPE == "perspective":
             raise ValueError(f"Cannot remove scaling from:\n{self.transformation}")
 
         # Decompose the estimated affine transformation.
@@ -152,8 +145,7 @@ class TileNode:
         """Gets the bounding coordinates of the image tile after warping by the
         estimated transformation.
 
-        :return: Bounding coordinates in the warped coordinate space:
-                 (minX, maxX), (minY, maxY).
+        :return: Bounding coordinates in the warped coordinate space: (minX, maxX), (minY, maxY).
         """
         # Get homogenous coordinates of the four image tile corners.
         height, width = self.img.shape

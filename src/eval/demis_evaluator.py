@@ -4,28 +4,31 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
-import cv2
-import numpy as np
+
 import os
 import re
+from statistics import fmean
+from timeit import default_timer
+
+import cv2
+import numpy as np
 import torch
-import warnings
-from LoFTR.src.utils.metrics import error_auc
-from piq import psnr, ssim, fsim, vsi, brisque
+from skimage.feature import hessian_matrix, hessian_matrix_eigvals
 from skimage.measure import ransac
-from skimage.metrics import mean_squared_error
-from skimage.transform import SimilarityTransform, AffineTransform, ProjectiveTransform
+from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structural_similarity
+from skimage.transform import AffineTransform, ProjectiveTransform, SimilarityTransform
+from torchvision.models.optical_flow import raft_small as raft
+from torchvision.utils import flow_to_image
+
+from LoFTR.src.utils.metrics import error_auc
 from src.dataset.demis_loader import DemisLoader
 from src.pipeline.demis_stitcher import DemisStitcher
 from src.pipeline.image_loader import ImageLoader
 from src.pipeline.tile_node import TileNode
-from statistics import fmean
-from timeit import default_timer
 
 
 class DEMISEvaluator:
-    """Evaluation class for the DEMIS pipeline. Expects to be used on the DEMIS
-    dataset. The baseline for all evaluation metrics is SIFT."""
+    """Evaluation class for the DEMIS pipeline. Expects to be used on the DEMIS dataset."""
 
     def __init__(
         self,
@@ -35,7 +38,7 @@ class DEMISEvaluator:
         eval_pairs=True,
         eval_grid=True,
         count=None,
-    ):
+    ) -> None:
         """DEMISEvaluator constructor.
 
         :param cfg: DEMIS evaluator configuration.
@@ -45,6 +48,7 @@ class DEMISEvaluator:
         :param eval_grid: Whether to evaluate the complete stitching output.
         :param count: Optional limit on the number of evaluated images.
         """
+        self.cfg = cfg
         self.img_loader = ImageLoader(cfg)
         self.eval_matching = eval_matching
         self.eval_homography = eval_homography
@@ -54,45 +58,26 @@ class DEMISEvaluator:
         self.results_homography = {}
         self.results_pairs = {}
         self.results_grid = {}
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # Create matching configurations for stitching using LoFTR and SIFT.
-        if cfg.STITCHER.MATCHING_METHOD == "sift":
-            self.cfg_sift = cfg
-            self.cfg_loftr = cfg.clone()
-            self.cfg_loftr.STITCHER.MATCHING_METHOD = "loftr"
-            self.cfg_loftr.freeze()
-        else:
-            self.cfg_sift = cfg.clone()
-            self.cfg_sift.STITCHER.MATCHING_METHOD = "sift"
-            self.cfg_sift.freeze()
-            self.cfg_loftr = cfg
+        # Initialise the stitcher.
+        self.stitcher = DemisStitcher(self.cfg, self.img_loader)
 
-        # Initialise DEMIS stitchers.
-        self.stitcher_sift = DemisStitcher(self.cfg_sift, self.img_loader)
-        self.stitcher_loftr = DemisStitcher(self.cfg_loftr, self.img_loader)
+        # Initialise RAFT.
+        self.raft = raft(pretrained=True, progress=False).to(self.device).eval()
 
         # Load DEMIS labels and paths.
-        loader = DemisLoader(self.cfg_loftr.DATASET.PATH)
-        self.labels = loader.load_labels(self.cfg_loftr.EVAL.SPLIT_PATH)
+        loader = DemisLoader(self.cfg.DATASET.PATH)
+        self.labels = loader.load_labels(self.cfg.EVAL.SPLIT_PATH)
         self.image_paths = loader.load_paths(self.labels)
 
         # Limit the number of labels.
         if count is not None:
             self.labels = self.labels[:count]
 
-        # Acknowledge the VSI RGB warning.
-        warnings.filterwarnings(
-            "ignore", message="The original VSI supports only RGB images"
-        )
-
     def evaluate(self):
         """Run the evaluation of the DEMIS pipeline."""
-        if (
-            not self.eval_matching
-            and not self.eval_homography
-            and not self.eval_pairs
-            and not self.eval_grid
-        ):
+        if not self.eval_matching and not self.eval_homography and not self.eval_pairs and not self.eval_grid:
             print("DEMIS Pipeline Evaluator: Nothing to evaluate!")
 
         # Run all chosen evaluations.
@@ -116,46 +101,11 @@ class DEMISEvaluator:
             print("============================================================")
             print("Pairwise matching results:")
             print("============================================================")
-            print(
-                f"Mean time to match a single pair of tiles (SIFT):  "
-                f"{self.results_matching['SIFT']['mean_seconds']:.4f} s"
-            )
-            print(
-                f"Mean time to match a single pair of tiles (LoFTR): "
-                f"{self.results_matching['LoFTR']['mean_seconds']:.4f} s"
-            )
-            print(
-                f"Mean reprojection error (SIFT):  "
-                f"{self.results_matching['SIFT']['mean_error']:.4f}"
-            )
-            print(
-                f"Mean reprojection error (LoFTR): "
-                f"{self.results_matching['LoFTR']['mean_error']:.4f}"
-            )
-            print(
-                f"Mean inlier reprojection error (SIFT):  "
-                f"{self.results_matching['SIFT']['mean_inlier_error']:.4f}"
-            )
-            print(
-                f"Mean inlier reprojection error (LoFTR): "
-                f"{self.results_matching['LoFTR']['mean_inlier_error']:.4f}"
-            )
-            print(
-                f"Mean matches count (SIFT):  "
-                f"{self.results_matching['SIFT']['mean_count']:d}"
-            )
-            print(
-                f"Mean matches count (LoFTR): "
-                f"{self.results_matching['LoFTR']['mean_count']:d}"
-            )
-            print(
-                f"Mean inlier matches count (SIFT):  "
-                f"{self.results_matching['SIFT']['mean_inlier_count']:d}"
-            )
-            print(
-                f"Mean inlier matches count (LoFTR): "
-                f"{self.results_matching['LoFTR']['mean_inlier_count']:d}"
-            )
+            print(f"Mean time to match a single pair of tiles: {self.results_matching['mean_seconds']:.4f} s")
+            print(f"Mean reprojection error: {self.results_matching['mean_error']:.4f}")
+            print(f"Mean inlier reprojection error:  {self.results_matching['mean_inlier_error']:.4f}")
+            print(f"Mean matches count: {self.results_matching['mean_count']:d}")
+            print(f"Mean inlier matches count: {self.results_matching['mean_inlier_count']:d}")
 
         if self.eval_homography:
             print("============================================================")
@@ -163,79 +113,28 @@ class DEMISEvaluator:
             print("============================================================")
             if not self.eval_matching:
                 # Add speed and match count information.
-                print(
-                    f"Mean time to match a single pair of tiles (SIFT):  "
-                    f"{self.results_matching['SIFT']['mean_seconds']:.4f} s"
-                )
-                print(
-                    f"Mean time to match a single pair of tiles (LoFTR): "
-                    f"{self.results_matching['LoFTR']['mean_seconds']:.4f} s"
-                )
-                print(
-                    f"Mean matches count (SIFT):  "
-                    f"{self.results_matching['SIFT']['mean_count']:d}"
-                )
-                print(
-                    f"Mean matches count (LoFTR): "
-                    f"{self.results_matching['LoFTR']['mean_count']:d}"
-                )
-                print(
-                    f"Mean inlier matches count (SIFT):  "
-                    f"{self.results_matching['SIFT']['mean_inlier_count']:d}"
-                )
-                print(
-                    f"Mean inlier matches count (LoFTR): "
-                    f"{self.results_matching['LoFTR']['mean_inlier_count']:d}"
-                )
-            for threshold in self.cfg_loftr.EVAL.ERROR_THRESHOLDS:
-                print(
-                    f"Corner error AUC@{threshold:2d}px (SIFT):  "
-                    f"{self.results_homography['SIFT'][str(threshold)] * 100:.4f}%"
-                )
-                print(
-                    f"Corner error AUC@{threshold:2d}px (LoFTR): "
-                    f"{self.results_homography['LoFTR'][str(threshold)] * 100:.4f}%"
-                )
+                print(f"Mean time to match a single pair of tiles: {self.results_matching['mean_seconds']:.4f} s")
+                print(f"Mean matches count: {self.results_matching['mean_count']:d}")
+                print(f"Mean inlier matches count: {self.results_matching['mean_inlier_count']:d}")
+            for threshold in self.cfg.EVAL.ERROR_THRESHOLDS:
+                print(f"Corner error AUC@{threshold:2d}px: {self.results_homography[str(threshold)] * 100:.4f}%")
 
         if self.eval_pairs:
             print("============================================================")
             print("Pairwise stitching output evaluation results:")
             print("============================================================")
-            print(f"   RMSE (SIFT):  {fmean(self.results_pairs['RMSE']['SIFT']):.4f}")
-            print(f"   RMSE (LoFTR): {fmean(self.results_pairs['RMSE']['LoFTR']):.4f}")
-            print(f"   PSNR (SIFT):  {fmean(self.results_pairs['PSNR']['SIFT']):.4f}")
-            print(f"   PSNR (LoFTR): {fmean(self.results_pairs['PSNR']['LoFTR']):.4f}")
-            print(f"   SSIM (SIFT):  {fmean(self.results_pairs['SSIM']['SIFT']):.4f}")
-            print(f"   SSIM (LoFTR): {fmean(self.results_pairs['SSIM']['LoFTR']):.4f}")
-            print(f"   FSIM (SIFT):  {fmean(self.results_pairs['FSIM']['SIFT']):.4f}")
-            print(f"   FSIM (LoFTR): {fmean(self.results_pairs['FSIM']['LoFTR']):.4f}")
-            print(f"    VSI (SIFT):  {fmean(self.results_pairs['VSI']['SIFT']):.4f}")
-            print(f"    VSI (LoFTR): {fmean(self.results_pairs['VSI']['LoFTR']):.4f}")
-            print(
-                f"BRISQUE (SIFT):  {fmean(self.results_pairs['BRISQUE']['SIFT']):.4f}"
-            )
-            print(
-                f"BRISQUE (LoFTR): {fmean(self.results_pairs['BRISQUE']['LoFTR']):.4f}"
-            )
+            print(f"   RMSE: {fmean(self.results_pairs['RMSE']):.4f}")
+            print(f"   PSNR: {fmean(self.results_pairs['PSNR']):.4f}")
+            print(f"   SSIM: {fmean(self.results_pairs['SSIM']):.4f}")
+            print(f"   FLOW: {fmean(self.results_pairs['FLOW']):.4f}")
 
         if self.eval_grid:
             print("============================================================")
             print("Complete grid stitching output evaluation results:")
             print("============================================================")
-            print(f"   RMSE (SIFT):  {fmean(self.results_grid['RMSE']['SIFT']):.4f}")
-            print(f"   RMSE (LoFTR): {fmean(self.results_grid['RMSE']['LoFTR']):.4f}")
-            print(f"   PSNR (SIFT):  {fmean(self.results_grid['PSNR']['SIFT']):.4f}")
-            print(f"   PSNR (LoFTR): {fmean(self.results_grid['PSNR']['LoFTR']):.4f}")
-            print(f"   SSIM (SIFT):  {fmean(self.results_grid['SSIM']['SIFT']):.4f}")
-            print(f"   SSIM (LoFTR): {fmean(self.results_grid['SSIM']['LoFTR']):.4f}")
-            print(f"   FSIM (SIFT):  {fmean(self.results_grid['FSIM']['SIFT']):.4f}")
-            print(f"   FSIM (LoFTR): {fmean(self.results_grid['FSIM']['LoFTR']):.4f}")
-            print(f"    VSI (SIFT):  {fmean(self.results_grid['VSI']['SIFT']):.4f}")
-            print(f"    VSI (LoFTR): {fmean(self.results_grid['VSI']['LoFTR']):.4f}")
-            print(f"BRISQUE (SIFT):  {fmean(self.results_grid['BRISQUE']['SIFT']):.4f}")
-            print(
-                f"BRISQUE (LoFTR): {fmean(self.results_grid['BRISQUE']['LoFTR']):.4f}"
-            )
+            print(f"   RMSE: {fmean(self.results_grid['RMSE']):.4f}")
+            print(f"   PSNR: {fmean(self.results_grid['PSNR']):.4f}")
+            print(f"   SSIM: {fmean(self.results_grid['SSIM']):.4f}")
 
     def _get_neighboring_tiles(self, position, grid_size):
         """Retrieve neighbors of a given tile that should be processed next.
@@ -262,44 +161,28 @@ class DEMISEvaluator:
         :param position1: Position of the source tile in the grid.
         :param position2: Position of the target tile in the grid.
         :param stitcher: Stitcher to use for the estimation.
-        :return: Estimated homography matrix, and the corresponding matches (target
-                 first).
+        :return: Estimated homography matrix, and the corresponding matches (target first).
         """
         # Compute keypoint matches.
-        matches2, matches1, conf = stitcher.compute_neighbor_matches(
+        matches2, matches1, _ = stitcher.compute_neighbor_matches(
             position=position2, position_neigh=position1, img=img2, img_neigh=img1
         )
 
-        # Sort by confidence and choose the best matches.
-        conf_indices = conf.argsort()[::-1]
-        matches1 = matches1[conf_indices][: self.cfg_loftr.EVAL.MAX_MATCHES]
-        matches2 = matches2[conf_indices][: self.cfg_loftr.EVAL.MAX_MATCHES]
-
         # Estimate the evaluated homography from the matches.
-        if self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "affine":
+        if self.cfg.STITCHER.TRANSFORM_TYPE == "affine":
             homography = np.identity(3)
             homography[:2, :], _ = cv2.estimateAffine2D(
-                matches1,
-                matches2,
-                method=cv2.RANSAC,
-                ransacReprojThreshold=self.cfg_loftr.STITCHER.RANSAC_THRESHOLD,
+                matches1, matches2, method=cv2.RANSAC, ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD
             )
-        elif self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "partial-affine":
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "partial-affine":
             homography = np.identity(3)
             homography[:2, :], _ = cv2.estimateAffinePartial2D(
-                matches1,
-                matches2,
-                method=cv2.RANSAC,
-                ransacReprojThreshold=self.cfg_loftr.STITCHER.RANSAC_THRESHOLD,
+                matches1, matches2, method=cv2.RANSAC, ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD
             )
-        elif self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "perspective":
-            homography, _ = cv2.findHomography(
-                matches1, matches2, cv2.RANSAC, self.cfg_loftr.STITCHER.RANSAC_THRESHOLD
-            )
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "perspective":
+            homography, _ = cv2.findHomography(matches1, matches2, cv2.RANSAC, self.cfg.STITCHER.RANSAC_THRESHOLD)
         else:
-            raise ValueError(
-                "Invalid transform type: " f"{self.cfg_loftr.STITCHER.TRANSFORM_TYPE}"
-            )
+            raise ValueError("Invalid transform type: {self.cfg.STITCHER.TRANSFORM_TYPE}")
 
         return homography, matches2, matches1
 
@@ -311,24 +194,22 @@ class DEMISEvaluator:
         :return: Inliers matches (source first, target second).
         """
         min_samples = 3
-        if self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "affine":
+        if self.cfg.STITCHER.TRANSFORM_TYPE == "affine":
             transform_type = AffineTransform
-        elif self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "partial-affine":
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "partial-affine":
             transform_type = SimilarityTransform
-        elif self.cfg_loftr.STITCHER.TRANSFORM_TYPE == "perspective":
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "perspective":
             transform_type = ProjectiveTransform
             min_samples = 4
         else:
-            raise ValueError(
-                "Invalid transform type: " f"{self.cfg_loftr.STITCHER.TRANSFORM_TYPE}"
-            )
+            raise ValueError("Invalid transform type: {self.cfg.STITCHER.TRANSFORM_TYPE}")
 
         # Apply RANSAC to find inlier keypoints.
         _, inliers_map = ransac(
             (matches2, matches1),
             transform_type,
             min_samples=min_samples,
-            residual_threshold=self.cfg_loftr.STITCHER.RANSAC_THRESHOLD,
+            residual_threshold=self.cfg.STITCHER.RANSAC_THRESHOLD,
             max_trials=100,
         )
 
@@ -340,8 +221,7 @@ class DEMISEvaluator:
 
         :param matches1: Matching keypoints from the source image tile.
         :param matches2: Matching keypoints from the target image tile.
-        :param homography_gt: Ground truth homography to use for the reprojection
-                              error calculation.
+        :param homography_gt: Ground truth homography to use for the reprojection error calculation.
         :return: Calculated reprojection error for each keypoint match.
         """
         # Convert source matches to target coordinate space.
@@ -358,19 +238,12 @@ class DEMISEvaluator:
         """Calculate the corner error between two image tiles for all four corners.
 
         :param img_shape: Shape of the image tile.
-        :param homography_gt: Ground truth homography to use for the corner error
-                              calculation.
+        :param homography_gt: Ground truth homography to use for the corner error calculation.
         :param homography: Homography to evaluate against the ground truth one.
         :return: Calculated corner error for each tile corner.
         """
         # Get corner positions in homogenous coordinates.
-        corners = np.array(
-            [
-                [0, img_shape[1], img_shape[1], 0],
-                [0, 0, img_shape[0], img_shape[0]],
-                [1, 1, 1, 1],
-            ]
-        )
+        corners = np.array([[0, img_shape[1], img_shape[1], 0], [0, 0, img_shape[0], img_shape[0]], [1, 1, 1, 1]])
 
         # Concert the corners to the target coordinate space using each homography.
         corners_gt = homography_gt @ corners
@@ -386,6 +259,105 @@ class DEMISEvaluator:
         # Return the corner errors.
         return np.linalg.norm(corners - corners_gt, axis=1)
 
+    def _get_flow_error(self, overlap_region1, overlap_region2, overlap_mask):
+        """Calculates error based on optical flow differences between two overlapping image regions.
+
+        :param overlap_region1: Overlapping region of the first image.
+        :param overlap_region2: Overlapping region of the second image.
+        :param overlap_mask: Overlap mask of the image regions.
+        :return: Calculated optical flow-based error.
+        """
+        # The images need to be in separate batches, with 3 channels and a resolution divisible by 8,
+        # and scaled to [-1, 1] (the mask remains binary and has only 2 channels to match flow shape).
+        region_size = (overlap_mask.shape[1] // 8 * 8, overlap_mask.shape[0] // 8 * 8)
+        overlap_region1 = cv2.resize(overlap_region1, region_size)
+        overlap_region2 = cv2.resize(overlap_region2, region_size)
+        overlap_mask = cv2.resize(overlap_mask, region_size)
+
+        region1_tensor = (torch.tensor(overlap_region1).to(self.device, dtype=torch.float32) / 255) * 2 - 1
+        region2_tensor = (torch.tensor(overlap_region2).to(self.device, dtype=torch.float32) / 255) * 2 - 1
+
+        region1_batch = torch.stack(3 * [region1_tensor]).unsqueeze(0)
+        region2_batch = torch.stack(3 * [region2_tensor]).unsqueeze(0)
+
+        # Predict optical flow.
+        flow = self.raft(region1_batch, region2_batch)[-1]  # (N, 2, H, W), first channel is horizontal flow
+        flow = flow[0].permute(1, 2, 0).cpu().detach().numpy()  # (H, W, 2)
+
+        # # OTSU thresholding and median filtering.
+        # _, threshold1_otsu = cv2.threshold(overlap_region1, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # _, threshold2_otsu = cv2.threshold(overlap_region2, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # threshold1_otsu = cv2.medianBlur(cv2.bitwise_and(cv2.bitwise_not(threshold1_otsu), overlap_mask), 5)
+        # threshold2_otsu = cv2.medianBlur(cv2.bitwise_and(cv2.bitwise_not(threshold2_otsu), overlap_mask), 5)
+
+        # # # Selecting threshold manually using edge detection.
+        # region1_edges = cv2.Canny(overlap_region1, 100, 200, 5)
+        # region2_edges = cv2.Canny(overlap_region2, 100, 200, 5)
+        # region1_edges = cv2.bitwise_and(region1_edges, overlap_region1)
+        # region2_edges = cv2.bitwise_and(region2_edges, overlap_region2)
+        # threshold1_value = np.sum(region1_edges) / np.count_nonzero(region1_edges)
+        # threshold2_value = np.sum(region2_edges) / np.count_nonzero(region2_edges)
+        # _, threshold1_canny = cv2.threshold(overlap_region1, threshold1_value, 255, cv2.THRESH_BINARY)
+        # _, threshold2_canny = cv2.threshold(overlap_region2, threshold2_value, 255, cv2.THRESH_BINARY)
+        # threshold1_canny = cv2.medianBlur(cv2.bitwise_and(cv2.bitwise_not(threshold1_canny), overlap_mask), 5)
+        # threshold2_canny = cv2.medianBlur(cv2.bitwise_and(cv2.bitwise_not(threshold2_canny), overlap_mask), 5)
+
+        # Thresholding based on ridge detection.
+        hessian1 = hessian_matrix(overlap_region1, sigma=2.5, use_gaussian_derivatives=False)
+        hessian2 = hessian_matrix(overlap_region2, sigma=2.5, use_gaussian_derivatives=False)
+        threshold1_ridges = hessian_matrix_eigvals(hessian1)[0]
+        threshold2_ridges = hessian_matrix_eigvals(hessian2)[0]
+        threshold1_ridges = cv2.normalize(threshold1_ridges, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        threshold2_ridges = cv2.normalize(threshold2_ridges, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        _, threshold1_ridges = cv2.threshold(threshold1_ridges, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, threshold2_ridges = cv2.threshold(threshold2_ridges, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        threshold1_ridges = cv2.bitwise_and(threshold1_ridges, overlap_mask)
+        threshold2_ridges = cv2.bitwise_and(threshold2_ridges, overlap_mask)
+
+        threshold_inputs = [
+            # (threshold1_otsu, threshold2_otsu),
+            # (threshold1_canny, threshold2_canny),
+            (threshold1_ridges, threshold2_ridges),
+        ]
+        for threshold1, threshold2 in threshold_inputs:
+            # Calculate flow metrics.
+            flow_mask = np.dstack(2 * (threshold1.astype(np.float32) / 255,))
+            masked_flow = flow * flow_mask
+            flow_magnitude = np.mean(np.linalg.norm(masked_flow, axis=-1))
+
+            # Calculate thresholding metrics.
+            flow_transform = np.dstack(np.meshgrid(np.arange(overlap_mask.shape[1]), np.arange(overlap_mask.shape[0])))
+            flow_transform = flow_transform.astype(np.float32) + flow
+            mask_transformed = cv2.remap(overlap_mask, flow_transform, None, cv2.INTER_NEAREST)
+            threshold1_transformed = cv2.bitwise_and(threshold1, mask_transformed).astype(np.float32) / 255
+            threshold2_transformed = cv2.remap(threshold2, flow_transform, None, cv2.INTER_NEAREST)
+            threshold2_transformed = cv2.bitwise_and(threshold2_transformed, mask_transformed).astype(np.float32) / 255
+            intersection = np.sum(threshold1_transformed * threshold2_transformed)
+            dice = 2 * intersection / (np.sum(threshold1_transformed) + np.sum(threshold2_transformed))
+
+            # Calculate EMSIQA.
+            emsiqa = flow_magnitude / dice
+            # print("EMSIQA:", emsiqa)
+
+        # flow_imgs = flow_to_image(torch.tensor(masked_flow).permute(2, 0, 1).unsqueeze(0))
+        # cv2.imwrite("output/overlap_0.png", overlap_region1)
+        # cv2.imwrite("output/overlap_1.png", overlap_region2)
+        # cv2.imwrite("output/threshold_0.png", threshold1_canny)
+        # cv2.imwrite("output/threshold_1.png", threshold2_canny)
+        # cv2.imwrite("output/threshold_otsu_0.png", threshold1_otsu)
+        # cv2.imwrite("output/threshold_otsu_1.png", threshold2_otsu)
+        # cv2.imwrite("output/threshold_0_transformed.png", threshold1_transformed * 255)
+        # cv2.imwrite("output/threshold_1_transformed.png", threshold2_transformed * 255)
+        # cv2.imwrite("output/threshold_ridges_0.png", threshold1_ridges)
+        # cv2.imwrite("output/threshold_ridges_1.png", threshold2_ridges)
+        # cv2.imwrite("output/edges_0.png", region1_edges)
+        # cv2.imwrite("output/edges_1.png", region2_edges)
+        # cv2.imwrite("output/mask.png", overlap_mask)
+        # cv2.imwrite("output/mask_transformed.png", mask_transformed)
+        # cv2.imwrite("output/flow.png", flow_imgs[0].permute(1, 2, 0).numpy())
+
+        return emsiqa
+
     def _align_images(self, img1, img2, center1, center2):
         """Aligns the sizes and centers of two images to the same position by
         zero padding.
@@ -399,10 +371,7 @@ class DEMISEvaluator:
         # Calculate paddings (left, top, right, bottom).
         padding1 = [0, 0, 0, 0]
         padding2 = [0, 0, 0, 0]
-        center_diff = (
-            round(abs(center1[0] - center2[0])),
-            round(abs(center1[1] - center2[1])),
-        )
+        center_diff = (round(abs(center1[0] - center2[0])), round(abs(center1[1] - center2[1])))
         if center1[0] < center2[0]:
             padding1[0] = center_diff[0]
         else:
@@ -429,22 +398,10 @@ class DEMISEvaluator:
         # Pad the images with zeros.
         pad_value = [0, 0, 0] if img1.ndim > 2 else 0
         img1 = cv2.copyMakeBorder(
-            img1,
-            padding1[1],
-            padding1[3],
-            padding1[0],
-            padding1[2],
-            cv2.BORDER_CONSTANT,
-            value=pad_value,
+            img1, padding1[1], padding1[3], padding1[0], padding1[2], cv2.BORDER_CONSTANT, value=pad_value
         )
         img2 = cv2.copyMakeBorder(
-            img2,
-            padding2[1],
-            padding2[3],
-            padding2[0],
-            padding2[2],
-            cv2.BORDER_CONSTANT,
-            value=pad_value,
+            img2, padding2[1], padding2[3], padding2[0], padding2[2], cv2.BORDER_CONSTANT, value=pad_value
         )
 
         # Calculate the new center position.
@@ -453,46 +410,29 @@ class DEMISEvaluator:
         return img1, img2, new_center
 
     def _evaluate_pairwise(self):
-        """Run the evaluation of pairwise matching and homography estimation (unless
-        not selected)."""
+        """Run the evaluation of pairwise matching and homography estimation (unless not selected)."""
         # Initialise result dictionaries.
         self.results_matching = {
-            "SIFT": {
-                "total_seconds": 0,
-                "sum": 0,
-                "count": 0,
-                "inlier_sum": 0,
-                "inlier_count": 0,
-                "mean_error": 0.0,
-                "mean_count": 0,
-                "mean_inlier_error": 0.0,
-                "mean_inlier_count": 0,
-            },
-            "LoFTR": {
-                "total_seconds": 0,
-                "sum": 0,
-                "count": 0,
-                "inlier_sum": 0,
-                "inlier_count": 0,
-                "mean_error": 0.0,
-                "mean_count": 0,
-                "mean_inlier_error": 0.0,
-                "mean_inlier_count": 0,
-            },
+            "total_seconds": 0,
+            "sum": 0,
+            "count": 0,
+            "inlier_sum": 0,
+            "inlier_count": 0,
+            "mean_error": 0.0,
+            "mean_count": 0,
+            "mean_inlier_error": 0.0,
+            "mean_inlier_count": 0,
         }
-        self.results_homography = {"SIFT": {}, "LoFTR": {}}
+        self.results_homography = {}
         self.results_pairs = {
-            "RMSE": {"SIFT": [], "LoFTR": []},
-            "PSNR": {"SIFT": [], "LoFTR": []},
-            "SSIM": {"SIFT": [], "LoFTR": []},
-            "FSIM": {"SIFT": [], "LoFTR": []},
-            "VSI": {"SIFT": [], "LoFTR": []},
-            "BRISQUE": {"SIFT": [], "LoFTR": []},
+            "RMSE": [],
+            "PSNR": [],
+            "SSIM": [],
+            "FLOW": [],
         }
 
         pair_count = 0
-        corner_errors_sift = []
-        corner_errors_loftr = []
+        corner_errors = []
         for i, labels in enumerate(self.labels):
             # Get tile paths.
             match = re.search(r"g(\d+)", os.path.basename(labels["path"]))
@@ -502,10 +442,7 @@ class DEMISEvaluator:
             tile_labels = labels["tile_labels"]
             tile_paths = self.image_paths[f"{grid_index}_0"]
 
-            print(
-                f"[{i + 1}/{len(self.labels)}] Processing pairs in grid starting "
-                f"with image {tile_paths[0, 0]}..."
-            )
+            print(f"[{i + 1}/{len(self.labels)}] Processing pairs in grid starting with image {tile_paths[0, 0]}...")
 
             # Go over all possible pairs.
             for position, tile_path in np.ndenumerate(tile_paths):
@@ -522,222 +459,101 @@ class DEMISEvaluator:
 
                     # Calculate ground truth and evaluated homographies.
                     position_index = position[0] * tile_paths.shape[1] + position[1]
-                    position_index_neigh = (
-                        position_neigh[0] * tile_paths.shape[1] + position_neigh[1]
-                    )
-                    homography_gt = (
-                        self.stitcher_loftr.get_transformation_between_tiles(
-                            tile_labels1=tile_labels[position_index_neigh],
-                            tile_labels2=tile_labels[position_index],
-                            grid_labels=labels,
-                        )
+                    position_index_neigh = position_neigh[0] * tile_paths.shape[1] + position_neigh[1]
+
+                    homography_gt = self.stitcher.get_transformation_between_tiles(
+                        tile_labels1=tile_labels[position_index_neigh],
+                        tile_labels2=tile_labels[position_index],
+                        grid_labels=labels,
                     )
 
-                    start_time_sift = default_timer()
-                    (
-                        homography_sift,
-                        matches_sift,
-                        matches_sift_neigh,
-                    ) = self._get_homography(
+                    start_time = default_timer()
+                    (homography, matches, matches_neigh) = self._get_homography(
                         img1=img_neigh,
                         img2=img,
                         position1=position_neigh,
                         position2=position,
-                        stitcher=self.stitcher_sift,
+                        stitcher=self.stitcher,
                     )
-                    end_time_sift = default_timer()
-
-                    start_time_loftr = default_timer()
-                    (
-                        homography_loftr,
-                        matches_loftr,
-                        matches_loftr_neigh,
-                    ) = self._get_homography(
-                        img1=img_neigh,
-                        img2=img,
-                        position1=position_neigh,
-                        position2=position,
-                        stitcher=self.stitcher_loftr,
-                    )
-                    end_time_loftr = default_timer()
+                    end_time = default_timer()
 
                     # Get inlier matches.
-                    inliers_sift, inliers_sift_neigh = self._get_inliers(
-                        matches1=matches_sift_neigh, matches2=matches_sift
-                    )
-                    inliers_loftr, inliers_loftr_neigh = self._get_inliers(
-                        matches1=matches_loftr_neigh, matches2=matches_loftr
-                    )
+                    inliers, inliers_neigh = self._get_inliers(matches1=matches_neigh, matches2=matches)
 
                     if self.eval_matching:
                         # Calculate reprojection errors.
-                        error_sift = self._get_reprojection_error(
-                            matches1=matches_sift_neigh,
-                            matches2=matches_sift,
-                            homography_gt=homography_gt,
+                        reprojection_error = self._get_reprojection_error(
+                            matches1=matches_neigh, matches2=matches, homography_gt=homography_gt
                         )
-                        error_loftr = self._get_reprojection_error(
-                            matches1=matches_loftr_neigh,
-                            matches2=matches_loftr,
-                            homography_gt=homography_gt,
-                        )
-                        inlier_error_sift = self._get_reprojection_error(
-                            matches1=inliers_sift_neigh,
-                            matches2=inliers_sift,
-                            homography_gt=homography_gt,
-                        )
-                        inlier_error_loftr = self._get_reprojection_error(
-                            matches1=inliers_loftr_neigh,
-                            matches2=inliers_loftr,
-                            homography_gt=homography_gt,
+                        inlier_error = self._get_reprojection_error(
+                            matches1=inliers_neigh, matches2=inliers, homography_gt=homography_gt
                         )
 
                         # Increase the error sums and counts.
-                        self.results_matching["SIFT"]["sum"] += error_sift
-                        self.results_matching["LoFTR"]["sum"] += error_loftr
-                        self.results_matching["SIFT"]["inlier_sum"] += inlier_error_sift
-                        self.results_matching["LoFTR"][
-                            "inlier_sum"
-                        ] += inlier_error_loftr
+                        self.results_matching["sum"] += reprojection_error
+                        self.results_matching["inlier_sum"] += inlier_error
 
                     # Always save time and match counts.
-                    self.results_matching["SIFT"]["total_seconds"] += (
-                        end_time_sift - start_time_sift
-                    )
-                    self.results_matching["LoFTR"]["total_seconds"] += (
-                        end_time_loftr - start_time_loftr
-                    )
-                    self.results_matching["SIFT"]["count"] += matches_sift.shape[0]
-                    self.results_matching["LoFTR"]["count"] += matches_loftr.shape[0]
-                    self.results_matching["SIFT"]["inlier_count"] += inliers_sift.shape[
-                        0
-                    ]
-                    self.results_matching["LoFTR"][
-                        "inlier_count"
-                    ] += inliers_loftr.shape[0]
+                    self.results_matching["total_seconds"] += end_time - start_time
+                    self.results_matching["count"] += matches.shape[0]
+                    self.results_matching["inlier_count"] += inliers.shape[0]
 
                     if self.eval_homography:
                         # Calculate corner errors.
-                        error_sift = self._get_corner_error(
-                            img_shape=img.shape,
-                            homography_gt=homography_gt,
-                            homography=homography_sift,
-                        )
-                        error_loftr = self._get_corner_error(
-                            img_shape=img.shape,
-                            homography_gt=homography_gt,
-                            homography=homography_loftr,
+                        reprojection_error = self._get_corner_error(
+                            img_shape=img.shape, homography_gt=homography_gt, homography=homography
                         )
 
                         # Save the corner error data.
-                        corner_errors_sift += error_sift.tolist()
-                        corner_errors_loftr += error_loftr.tolist()
+                        corner_errors += reprojection_error.tolist()
 
                     if self.eval_pairs:
                         # Create stitching trees representing the stitched images.
-                        root = TileNode(
-                            cfg=self.cfg_loftr,
-                            img=img,
-                            position=position,
-                            transformation=np.identity(3),
-                        )
+                        root = TileNode(cfg=self.cfg, img=img, position=position, transformation=np.identity(3))
                         node_gt = TileNode(
-                            cfg=self.cfg_loftr,
-                            img=img_neigh,
-                            position=position_neigh,
-                            transformation=homography_gt,
+                            cfg=self.cfg, img=img_neigh, position=position_neigh, transformation=homography_gt
                         )
-                        node_sift = TileNode(
-                            cfg=self.cfg_sift,
-                            img=img_neigh,
-                            position=position_neigh,
-                            transformation=homography_sift,
-                        )
-                        node_loftr = TileNode(
-                            cfg=self.cfg_loftr,
-                            img=img_neigh,
-                            position=position_neigh,
-                            transformation=homography_loftr,
-                        )
+                        node = TileNode(cfg=self.cfg, img=img_neigh, position=position_neigh, transformation=homography)
 
                         # Stitch and evaluate the image pairs.
-                        img_gt, pos_gt = self.stitcher_loftr.stitch_mst_nodes(
-                            [root, node_gt]
+                        img_stitched, pos = self.stitcher.stitch_mst_nodes([root, node])
+                        img_gt, pos_gt = self.stitcher.stitch_mst_nodes([root, node_gt])
+                        self._compare_images(img_gt, img_stitched, pos_gt, pos, self.results_pairs)
+
+                        # Evaluate stitching results using optical flow.
+                        warped_images, warped_masks, _ = self.stitcher.stitch_mst_nodes(
+                            [root, node], separate=True, masks=True
                         )
-                        img_sift, pos_sift = self.stitcher_sift.stitch_mst_nodes(
-                            [root, node_sift]
+                        overlap_regions, overlap_mask = self.stitcher.get_overlap_region(
+                            warped_images, warped_masks, cropped=True
                         )
-                        img_loftr, pos_loftr = self.stitcher_loftr.stitch_mst_nodes(
-                            [root, node_loftr]
-                        )
-                        self._compare_images(
-                            img_gt,
-                            img_sift,
-                            img_loftr,
-                            pos_gt,
-                            pos_sift,
-                            pos_loftr,
-                            self.results_pairs,
+                        self.results_pairs["FLOW"].append(
+                            self._get_flow_error(overlap_regions[0], overlap_regions[1], overlap_mask)
                         )
 
         if self.eval_matching:
             # Calculate mean reprojection errors and counts.
-            self.results_matching["SIFT"]["mean_error"] = (
-                self.results_matching["SIFT"]["sum"]
-                / self.results_matching["SIFT"]["count"]
-            )
-            self.results_matching["LoFTR"]["mean_error"] = (
-                self.results_matching["LoFTR"]["sum"]
-                / self.results_matching["LoFTR"]["count"]
-            )
-            self.results_matching["SIFT"]["mean_inlier_error"] = (
-                self.results_matching["SIFT"]["inlier_sum"]
-                / self.results_matching["SIFT"]["inlier_count"]
-            )
-            self.results_matching["LoFTR"]["mean_inlier_error"] = (
-                self.results_matching["LoFTR"]["inlier_sum"]
-                / self.results_matching["LoFTR"]["inlier_count"]
+            self.results_matching["mean_error"] = self.results_matching["sum"] / self.results_matching["count"]
+            self.results_matching["mean_inlier_error"] = (
+                self.results_matching["inlier_sum"] / self.results_matching["inlier_count"]
             )
 
         # Always calculate mean time and match counts.
-        self.results_matching["SIFT"]["mean_seconds"] = (
-            self.results_matching["SIFT"]["total_seconds"] / pair_count
-        )
-        self.results_matching["LoFTR"]["mean_seconds"] = (
-            self.results_matching["LoFTR"]["total_seconds"] / pair_count
-        )
-        self.results_matching["SIFT"]["mean_count"] = round(
-            self.results_matching["SIFT"]["count"] / pair_count
-        )
-        self.results_matching["LoFTR"]["mean_count"] = round(
-            self.results_matching["LoFTR"]["count"] / pair_count
-        )
-        self.results_matching["SIFT"]["mean_inlier_count"] = round(
-            self.results_matching["SIFT"]["inlier_count"] / pair_count
-        )
-        self.results_matching["LoFTR"]["mean_inlier_count"] = round(
-            self.results_matching["LoFTR"]["inlier_count"] / pair_count
-        )
+        self.results_matching["mean_seconds"] = self.results_matching["total_seconds"] / pair_count
+        self.results_matching["mean_count"] = round(self.results_matching["count"] / pair_count)
+        self.results_matching["mean_inlier_count"] = round(self.results_matching["inlier_count"] / pair_count)
 
         if self.eval_homography:
             # Calculate AUC results (also add mean counts for consistency).
-            self.results_homography["SIFT"] = error_auc(
-                corner_errors_sift, self.cfg_loftr.EVAL.ERROR_THRESHOLDS, False
-            )
-            self.results_homography["LoFTR"] = error_auc(
-                corner_errors_loftr, self.cfg_loftr.EVAL.ERROR_THRESHOLDS, False
-            )
+            self.results_homography = error_auc(corner_errors, self.cfg.EVAL.ERROR_THRESHOLDS, False)
 
     def _evaluate_grid(self):
         """Run the evaluation of the complete stitching output."""
         # Prepare a dictionary for the results.
         self.results_grid = {
-            "RMSE": {"SIFT": [], "LoFTR": []},
-            "PSNR": {"SIFT": [], "LoFTR": []},
-            "SSIM": {"SIFT": [], "LoFTR": []},
-            "FSIM": {"SIFT": [], "LoFTR": []},
-            "VSI": {"SIFT": [], "LoFTR": []},
-            "BRISQUE": {"SIFT": [], "LoFTR": []},
+            "RMSE": [],
+            "PSNR": [],
+            "SSIM": [],
         }
 
         for i, labels in enumerate(self.labels):
@@ -748,116 +564,28 @@ class DEMISEvaluator:
             grid_index = int(match.groups()[0])
             tile_paths = self.image_paths[f"{grid_index}_0"]
 
-            print(
-                f"[{i + 1}/{len(self.labels)}] Processing grid starting with "
-                f"image {tile_paths[0, 0]}..."
-            )
+            print(f"[{i + 1}/{len(self.labels)}] Processing grid starting with image {tile_paths[0, 0]}...")
 
-            # Stitch the grid using ground truth labels, LoFTR, and SIFT.
-            img_gt, pos_gt = self.stitcher_loftr.stitch_demis_grid_mst(labels)
-            img_sift, pos_sift = self.stitcher_sift.stitch_grid(tile_paths)
-            img_loftr, pos_loftr = self.stitcher_loftr.stitch_grid(tile_paths)
+            # Stitch the grid using ground truth labels and the selected method.
+            img_gt, pos_gt = self.stitcher.stitch_demis_grid_mst(labels)
+            img, pos = self.stitcher.stitch_grid(tile_paths)
 
             # Get the results.
-            # Note: Generally does not give results in line with pairwise stitching.
-            # There might be issues with regards to grid center positioning etc.
-            self._compare_images(
-                img_gt,
-                img_sift,
-                img_loftr,
-                pos_gt,
-                pos_sift,
-                pos_loftr,
-                self.results_grid,
-            )
+            self._compare_images(img_gt, img, pos_gt, pos, self.results_grid)
 
-    def _compare_images(
-        self, img_gt, img_sift, img_loftr, pos_gt, pos_sift, pos_loftr, result_dict
-    ):
-        """Compares SIFT and LoFTR images to the ground truth image using metrics
-        such as PSNR and SSIM.
+    def _compare_images(self, img_gt, img, pos_gt, pos, result_dict):
+        """Compares images to the ground truth image using metrics such as PSNR and SSIM.
 
         :param img_gt: Ground truth image.
-        :param img_sift: Image created using SIFT.
-        :param img_loftr: Image created using LoFTR.
+        :param img: Image created using the selected method.
         :param pos_gt: Starting positions of the ground truth image.
-        :param pos_sift: Starting positions of the SIFT image.
-        :param pos_loftr: Starting positions of the LoFTR image.
+        :param pos: Starting positions of the evaluated image.
         :param result_dict: Target dictionary to append results to.
         """
         # Align image centers and dimensions.
-        img_gt, img_sift, pos_gt_sift = self._align_images(
-            img_gt, img_sift, pos_gt, pos_sift
-        )
-        img_gt, img_loftr, pos_gt_loftr = self._align_images(
-            img_gt, img_loftr, pos_gt_sift, pos_loftr
-        )
-        img_sift, img_loftr, _ = self._align_images(
-            img_sift, img_loftr, pos_gt_sift, pos_gt_loftr
-        )
-
-        # Get tensor representations of the results (necessary for PIQ metrics).
-        if img_gt.ndim > 2:
-            img_tensor_gt = torch.from_numpy(img_gt).permute(2, 0, 1)[np.newaxis, ...]
-            img_tensor_sift = torch.from_numpy(img_sift).permute(2, 0, 1)[
-                np.newaxis, ...
-            ]
-            img_tensor_loftr = torch.from_numpy(img_loftr).permute(2, 0, 1)[
-                np.newaxis, ...
-            ]
-        else:
-            img_tensor_gt = torch.from_numpy(img_gt)[np.newaxis, np.newaxis, ...]
-            img_tensor_sift = torch.from_numpy(img_sift)[np.newaxis, np.newaxis, ...]
-            img_tensor_loftr = torch.from_numpy(img_loftr)[np.newaxis, np.newaxis, ...]
+        img_gt, img, _ = self._align_images(img_gt, img, pos_gt, pos)
 
         # Evaluate the results.
-        result_dict["RMSE"]["SIFT"].append(
-            np.sqrt(mean_squared_error(img_gt, img_sift))
-        )
-        result_dict["RMSE"]["LoFTR"].append(
-            np.sqrt(mean_squared_error(img_gt, img_loftr))
-        )
-        result_dict["PSNR"]["SIFT"].append(
-            min(psnr(img_tensor_gt, img_tensor_sift, data_range=255).item(), 80.0)
-        )
-        result_dict["PSNR"]["LoFTR"].append(
-            min(psnr(img_tensor_gt, img_tensor_loftr, data_range=255).item(), 80.0)
-        )
-        result_dict["SSIM"]["SIFT"].append(
-            ssim(
-                img_tensor_gt, img_tensor_sift, data_range=255, downsample=False
-            ).item()
-        )
-        result_dict["SSIM"]["LoFTR"].append(
-            ssim(
-                img_tensor_gt, img_tensor_loftr, data_range=255, downsample=False
-            ).item()
-        )
-        result_dict["FSIM"]["SIFT"].append(
-            fsim(
-                img_tensor_gt,
-                img_tensor_sift,
-                data_range=255,
-                chromatic=img_gt.ndim > 2,
-            ).item()
-        )
-        result_dict["FSIM"]["LoFTR"].append(
-            fsim(
-                img_tensor_gt,
-                img_tensor_loftr,
-                data_range=255,
-                chromatic=img_gt.ndim > 2,
-            ).item()
-        )
-        result_dict["VSI"]["SIFT"].append(
-            vsi(img_tensor_gt, img_tensor_sift, data_range=255).item()
-        )
-        result_dict["VSI"]["LoFTR"].append(
-            vsi(img_tensor_gt, img_tensor_loftr, data_range=255).item()
-        )
-        result_dict["BRISQUE"]["SIFT"].append(
-            brisque(img_tensor_sift, data_range=255).item()
-        )
-        result_dict["BRISQUE"]["LoFTR"].append(
-            brisque(img_tensor_loftr, data_range=255).item()
-        )
+        result_dict["RMSE"].append(np.sqrt(mean_squared_error(img_gt, img)))
+        result_dict["PSNR"].append(peak_signal_noise_ratio(img_gt, img))
+        result_dict["SSIM"].append(structural_similarity(img_gt, img))

@@ -4,8 +4,8 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
-from yacs.config import CfgNode as CN
 
+from yacs.config import CfgNode as CN
 
 _C = CN()
 _C.DATASET = CN()
@@ -26,6 +26,7 @@ _C.STITCHER.MATCHING_METHOD = "loftr"
 _C.STITCHER.TRANSFORM_TYPE = "affine"
 _C.STITCHER.CONSTRUCTION_METHOD = "slam"
 _C.STITCHER.COMPOSITING_METHOD = "overwrite"
+_C.STITCHER.MAX_MATCHES = 100
 _C.STITCHER.ROOT_TILE = (0, 0)
 _C.STITCHER.COLORED_OUTPUT = False
 _C.STITCHER.SAVE_MATCHES = False
@@ -45,7 +46,6 @@ _C.LOFTR.CHECKPOINT_PATH = "LoFTR/weights/demis_ds.ckpt"
 
 # Evaluator configuration.
 _C.EVAL.SPLIT_PATH = "datasets/DEMIS/splits/test_list.txt"
-_C.EVAL.MAX_MATCHES = 1000
 _C.EVAL.ERROR_THRESHOLDS = (3, 5, 10)
 
 

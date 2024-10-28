@@ -4,11 +4,12 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
 import argparse
 import os
+
 from src.config.config import get_cfg_defaults
 from src.eval.demis_evaluator import DEMISEvaluator
-
 
 if __name__ == "__main__":
     # Parse arguments.
@@ -67,7 +68,5 @@ if __name__ == "__main__":
         eval_grid = True
 
     # Run the evaluation.
-    evaluator = DEMISEvaluator(
-        cfg, eval_matching, eval_homography, eval_pairs, eval_grid, args.count
-    )
+    evaluator = DEMISEvaluator(cfg, eval_matching, eval_homography, eval_pairs, eval_grid, args.count)
     evaluator.evaluate()
