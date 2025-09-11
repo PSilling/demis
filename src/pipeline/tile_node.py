@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
+from skimage.measure import ransac
+from skimage.transform import AffineTransform, EuclideanTransform, ProjectiveTransform, SimilarityTransform
 
 
 class TileNode:
@@ -22,6 +24,7 @@ class TileNode:
         parent=None,
         matches=None,
         matches_parent=None,
+        inliers_map=None,
         transformation=None,
     ):
         """TileNode constructor.
@@ -32,6 +35,7 @@ class TileNode:
         :param parent: Parent node.
         :param matches: Matching keypoints for this node.
         :param matches_parent: Matching keypoints for the parent node.
+        :param inliers_map: Boolean map specifying which matches are inliers.
         :param transformation: Transformation matrix for this node (calculated lazily).
         """
         self.cfg = cfg
@@ -40,84 +44,71 @@ class TileNode:
         self.parent = parent
         self.matches = matches
         self.matches_parent = matches_parent
+        self.inliers_map = inliers_map
         self.transformation = transformation
         if transformation is not None and parent is not None and parent.transformation is not None:
             self.transformation = parent.transformation.dot(transformation)
 
     def estimate_transformation(self):
         """Estimate image tile transformation based on the corresponding matching result
-        and the parent transformation."""
+        and the parent transformation. Includes inlier selection."""
         # Estimate the transformation matrix of the selected transformation type.
-        # The resulting matrix is always converted to a complete 3x3 shape.
-        if self.cfg.STITCHER.TRANSFORM_TYPE == "affine":
-            M = np.identity(3)
-            M[:2, :], _ = cv2.estimateAffine2D(
-                self.matches,
-                self.matches_parent,
-                method=cv2.RANSAC,
-                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD,
-            )
-        elif self.cfg.STITCHER.TRANSFORM_TYPE == "partial-affine":
-            M = np.identity(3)
-            M[:2, :], _ = cv2.estimateAffinePartial2D(
-                self.matches,
-                self.matches_parent,
-                method=cv2.RANSAC,
-                ransacReprojThreshold=self.cfg.STITCHER.RANSAC_THRESHOLD,
-            )
-        elif self.cfg.STITCHER.TRANSFORM_TYPE == "perspective":
-            M, _ = cv2.findHomography(
-                self.matches,
-                self.matches_parent,
-                cv2.RANSAC,
-                self.cfg.STITCHER.RANSAC_THRESHOLD,
-            )
+        min_samples = 3
+        if self.cfg.STITCHER.TRANSFORM_TYPE == "euclidean":
+            transform_type = EuclideanTransform
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "similarity":
+            transform_type = SimilarityTransform
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "affine":
+            transform_type = AffineTransform
+        elif self.cfg.STITCHER.TRANSFORM_TYPE == "projective":
+            transform_type = ProjectiveTransform
+            min_samples = 4
         else:
-            raise ValueError("Invalid transform type: " f"{self.cfg.STITCHER.TRANSFORM_TYPE}")
+            raise ValueError(
+                f"Transform type '{self.cfg.STITCHER.TRANSFORM_TYPE}' not supported for the selected method. "
+                "Please choose one of: euclidean, similarity, affine, projective."
+            )
+
+        # Apply RANSAC to find the selected transformation and inlier keypoints.
+        result, inliers_map = ransac(
+            (self.matches, self.matches_parent),
+            transform_type,
+            min_samples=min_samples,
+            residual_threshold=self.cfg.STITCHER.RANSAC_THRESHOLD,
+            max_trials=self.cfg.STITCHER.RANSAC_TRIALS,
+            rng=self.cfg.STITCHER.RANSAC_SEED,
+        )
+
+        M = result.params
+        self.inliers_map = inliers_map
 
         # Add the parent transformation if present.
         if self.parent:
             M = self.parent.transformation.dot(M)
         self.transformation = M
 
-    def remove_scaling(self):
-        """Remove scaling from the current transformation (must be affine).
+    def get_pose(self):
+        """Get the pose (position and angle) of the current transformation.
 
         :return: Updated translation values and angle.
         """
-        if self.transformation is None or self.cfg.STITCHER.TRANSFORM_TYPE == "perspective":
-            raise ValueError(f"Cannot remove scaling from:\n{self.transformation}")
+        if self.transformation is None:
+            raise ValueError("Cannot calculate pose from an undefined transformation.")
 
-        # Decompose the estimated affine transformation.
-        # Based on a formula from:
-        # merv (https://math.stackexchange.com/users/61427/merv)
-        # Given this transformation matrix, how do I decompose it
-        # into translation, rotation and scale matrices?,
-        # URL (version: 2017-04-13): https://math.stackexchange.com/q/417813
+        if self.cfg.STITCHER.TRANSFORM_TYPE not in ("translation", "euclidean"):
+            raise ValueError("Poses can only be correctly calculated for translation or euclidean transformations.")
+
         M = self.transformation
-        T = np.identity(3)
-        R = np.identity(3)
-        S = np.identity(3)
-
-        T[:, 2] = M[:, 2]
         angle = np.arctan2(M[1, 0], M[1, 1])
-        R[0, 0] = np.cos(angle)
-        R[0, 1] = -np.sin(angle)
-        R[1, 0] = -R[0, 1]
-        R[1, 1] = R[0, 0]
-        S[0, 0] = np.sign(M[0, 0]) * np.sqrt(M[0, 0] ** 2 + M[0, 1] ** 2)
-        S[1, 1] = np.sign(M[1, 1]) * np.sqrt(M[1, 0] ** 2 + M[1, 1] ** 2)
-
-        # Remove scale from the transformation estimate.
-        self.transformation = np.linalg.inv(S) @ M
-
-        # Return the updated pose parameters (translation on x and y axes, and the
-        # rotation angle).
-        return self.transformation[0, 2], self.transformation[1, 2], angle
+        return M[0, 2], M[1, 2], angle
 
     def color_coat_image(self):
         """Add color coating to the image tile. Color coating is based on tile
         position."""
+        # If already colored, skip.
+        if self.img.ndim == 3:
+            return
+        
         # Define row color pallette.
         color_shifts = np.array(
             [
@@ -148,7 +139,10 @@ class TileNode:
         :return: Bounding coordinates in the warped coordinate space: (minX, maxX), (minY, maxY).
         """
         # Get homogenous coordinates of the four image tile corners.
-        height, width = self.img.shape
+        if self.img.ndim == 2:
+            height, width = self.img.shape
+        else:
+            height, width, _ = self.img.shape
         C = np.array([[0, width, width, 0], [0, 0, height, height], [1, 1, 1, 1]])
 
         # Warp the corner coordinates.

@@ -4,17 +4,16 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
 import argparse
 import re
-from src.dataset.demis_synthesizer import DEMISSynthesizer, DEMISSynthesizerConfig
 
+from src.dataset.demis_synthesizer import DEMISSynthesizer, DEMISSynthesizerConfig
 
 if __name__ == "__main__":
     # Parse arguments.
     parser = argparse.ArgumentParser(description="DEMIS dataset synthesizer")
-    parser.add_argument(
-        "src_path", type=str, help="path to the directory with source images"
-    )
+    parser.add_argument("src_path", type=str, help="path to the directory with source images")
     parser.add_argument("out_path", type=str, help="output directory path")
     parser.add_argument(
         "-o",

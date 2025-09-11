@@ -132,13 +132,16 @@ class TileStitcher:
                 matches1 = batch["mkpts0_f"].cpu().numpy()
                 matches2 = batch["mkpts1_f"].cpu().numpy()
                 conf = batch["mconf"].cpu().numpy()
-        elif self.cfg.STITCHER.MATCHING_METHOD == "sift":
-            # Detect and describe SIFT features.
-            kps1, desc1 = self.img_processors["sift"].detectAndCompute(img1, None)
-            kps2, desc2 = self.img_processors["sift"].detectAndCompute(img2, None)
+        elif self.cfg.STITCHER.MATCHING_METHOD in ("sift", "surf", "orb"):
+            # Detect and describe SIFT/SURF/ORB features.
+            kps1, desc1 = self.img_processors[self.cfg.STITCHER.MATCHING_METHOD].detectAndCompute(img1, None)
+            kps2, desc2 = self.img_processors[self.cfg.STITCHER.MATCHING_METHOD].detectAndCompute(img2, None)
 
             # Match descriptors using the FLANN matcher.
-            raw_matches = self.img_processors["flann"].knnMatch(desc1, desc2, k=2)
+            if self.cfg.STITCHER.MATCHING_METHOD == "orb":
+                raw_matches = self.img_processors["bfmatcher"].knnMatch(desc1, desc2, k=2)
+            else:
+                raw_matches = self.img_processors["flann"].knnMatch(desc1, desc2, k=2)
 
             # Filter out bad matches using ratio test.
             conf = []
@@ -147,7 +150,7 @@ class TileStitcher:
                 distance_limit = raw_match2.distance * self.cfg.STITCHER.DISTANCE_RATIO
                 if raw_match1.distance < distance_limit:
                     matches.append([raw_match1])
-                    conf.append(raw_match1.distance / raw_match2.distance)
+                    conf.append(1 - (raw_match1.distance / raw_match2.distance))
 
             # Get all matching points and confidence scores. Confidence scores are
             # calculated based on the distance between the best and second best matches.

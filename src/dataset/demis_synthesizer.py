@@ -4,12 +4,14 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
-import cv2
+
 import math
-import numpy as np
 import os
 import random
 from glob import glob
+
+import cv2
+import numpy as np
 
 
 class DEMISSynthesizerConfig:
@@ -55,10 +57,7 @@ class DEMISSynthesizer:
         # Synthesize the dataset.
         demis_paths = self._parse_demis_paths()
         for i, path in enumerate(demis_paths):
-            print(
-                f"[{i + 1}/{len(demis_paths)}] Processing source image "
-                f"{os.path.basename(path)}..."
-            )
+            print(f"[{i + 1}/{len(demis_paths)}] Processing source image " f"{os.path.basename(path)}...")
             img = cv2.imread(path, cv2.IMREAD_COLOR)
 
             if img is None:
@@ -69,20 +68,14 @@ class DEMISSynthesizer:
 
             # Save all generated image tiles.
             for j, img_tile in enumerate(img_tiles):
-                filename = (
-                    f"{self.config.OUTPUT_PREFIX}g{i:05d}_t{j:05d}_s00000"
-                    f".{self.config.OUTPUT_FILETYPE}"
-                )
+                filename = f"{self.config.OUTPUT_PREFIX}g{i:05d}_t{j:05d}_s00000" f".{self.config.OUTPUT_FILETYPE}"
                 cv2.imwrite(os.path.join(img_output_path, filename), img_tile)
 
             # Save image labels.
             filename = f"{self.config.OUTPUT_PREFIX}g{i:05d}.txt"
             with open(os.path.join(labels_output_path, filename), "w") as labels_file:
                 header = labels[0]
-                labels_file.write(
-                    f"{header[0]:<2d}\t{header[1]:<2d}\t"
-                    f"{header[2]:<5d}\t{header[3]:<5d}\n"
-                )
+                labels_file.write(f"{header[0]:<2d}\t{header[1]:<2d}\t" f"{header[2]:<5d}\t{header[3]:<5d}\n")
                 for j, label in enumerate(labels[1:]):
                     tile_path = (
                         f"../images/{self.config.OUTPUT_PREFIX}g{i:05d}_"
@@ -103,9 +96,7 @@ class DEMISSynthesizer:
         if os.path.isfile(self.config.INPUT_PATH):
             paths = [self.config.INPUT_PATH]
         elif os.path.isdir(self.config.INPUT_PATH):
-            search_path = os.path.join(
-                self.config.INPUT_PATH, f"**/*.{self.config.INPUT_FILETYPE}"
-            )
+            search_path = os.path.join(self.config.INPUT_PATH, f"**/*.{self.config.INPUT_FILETYPE}")
             paths = glob(search_path, recursive=True)
         else:
             raise ValueError(f"Cannot read from path: {self.config.INPUT_PATH}")
@@ -182,16 +173,8 @@ class DEMISSynthesizer:
         # =
         # IMG_SIZE - 2 * ROTATION_SHIFT
         max_shifts = (
-            (
-                self.config.OVERLAP
-                - self.config.AUGMENTATIONS["translate"]
-                + rotation_shifts[0] / tile_resolution[0]
-            ),
-            (
-                self.config.OVERLAP
-                - self.config.AUGMENTATIONS["translate"]
-                + rotation_shifts[1] / tile_resolution[1]
-            ),
+            (self.config.OVERLAP - self.config.AUGMENTATIONS["translate"] + rotation_shifts[0] / tile_resolution[0]),
+            (self.config.OVERLAP - self.config.AUGMENTATIONS["translate"] + rotation_shifts[1] / tile_resolution[1]),
         )
         width_tiles = (img.shape[1] - 2 * rotation_shifts[0]) / tile_resolution[0]
         height_tiles = (img.shape[0] - 2 * rotation_shifts[1]) / tile_resolution[1]
@@ -245,15 +228,11 @@ class DEMISSynthesizer:
             )
 
             # Apply random rotation around the tile center position.
-            rotated_img, rotation_angle = self._random_rotation(
-                img, center_position, previous_angle
-            )
+            rotated_img, rotation_angle = self._random_rotation(img, center_position, previous_angle)
             previous_angle = rotation_angle
 
             # Crop the tile.
-            img_tile = rotated_img[
-                start_position[1] : end_position[1], start_position[0] : end_position[0]
-            ].copy()
+            img_tile = rotated_img[start_position[1] : end_position[1], start_position[0] : end_position[0]].copy()
 
             # Apply all remaining data augmentations.
             if self.config.AUGMENTATIONS["gaussian_noise"] is not None:

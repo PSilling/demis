@@ -4,10 +4,12 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
-import re
+
 import os
-import numpy as np
+import re
 from glob import glob
+
+import numpy as np
 
 
 class DatasetLoader:
@@ -71,7 +73,7 @@ class DatasetLoader:
                 image_paths[path_key][row, column] = path
 
         # Validate that the number of paths corresponds to the expected grid size.
-        for path_key in image_paths.keys():
+        for path_key in image_paths:
             if 0 in image_paths[path_key]:
                 grid_index, slice_index = path_key.split("_")
                 raise ValueError(

@@ -1,49 +1,47 @@
-"""Evaluation module of the DEMIS tool.
+"""Evaluation module of the unlabeled grids of EM images.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
-Year: 2023
+Year: 2024
 """
 
 import os
-import re
 from statistics import fmean
 from timeit import default_timer
 
 import cv2
 import numpy as np
 import torch
-from scipy.spatial.distance import correlation
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals
 from skimage.measure import ransac
-from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structural_similarity
 from skimage.transform import AffineTransform, EuclideanTransform, ProjectiveTransform, SimilarityTransform
 from torchvision.models.optical_flow import raft_small as raft
 
-from LoFTR.src.utils.metrics import error_auc
-from src.dataset.demis_loader import DemisLoader
+from src.dataset.dataset_loader import DatasetLoader
 from src.pipeline.demis_stitcher import DemisStitcher
 from src.pipeline.image_loader import ImageLoader
 from src.pipeline.tile_node import TileNode
 
 
-class DEMISEvaluator:
-    """Evaluation class for the DEMIS pipeline. Expects to be used on the DEMIS dataset."""
+class GridEvaluator:
+    """Evaluation class for general grid datasets."""
 
     def __init__(
         self,
         cfg,
+        transformations_path="",
         count=None,
     ) -> None:
-        """DEMISEvaluator constructor.
+        """GridEvaluator constructor.
 
-        :param cfg: DEMIS evaluator configuration.
+        :param cfg: Grid evaluator configuration.
+        :param transformations_path: Optional path to a directory with precomputed global tile transformations.
         :param count: Optional limit on the number of evaluated images.
         """
         self.cfg = cfg
+        self.transformations_path = transformations_path
         self.img_loader = ImageLoader(cfg)
         self.results = {}
-        self.results_corner_error = {}
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Initialise the stitcher.
@@ -52,25 +50,24 @@ class DEMISEvaluator:
         # Initialise RAFT.
         self.raft = raft(pretrained=True, progress=False).to(self.device).eval()
 
-        # Load DEMIS labels and paths.
-        loader = DemisLoader(self.cfg.DATASET.PATH)
-        self.labels = loader.load_labels(self.cfg.EVAL.SPLIT_PATH)
-        self.image_paths = loader.load_paths(self.labels)
+        # Load dataset paths.
+        loader = DatasetLoader(self.cfg.DATASET.PATH)
+        self.image_paths = loader.load_paths()
 
-        # Limit the number of labels.
+        # Limit the number of grid slices.
         if count is not None:
-            self.labels = self.labels[:count]
+            self.image_paths = {k: self.image_paths[k] for k in list(self.image_paths)[:count]}
 
     def run(self):
-        """Run the evaluation of the DEMIS pipeline."""
+        """Run evaluation of the dataset and print the results."""
         print("============================================================")
-        print("DEMIS Pipeline Evaluation")
+        print("Grid Dataset Evaluation")
         print("============================================================")
         print("Starting the evaluation...")
         print("============================================================")
         self._evaluate()
 
-        # Print all results.
+        # Print the results.
         print("Evaluation finished!")
         print("============================================================")
         print("Feature matching results:")
@@ -79,17 +76,10 @@ class DEMISEvaluator:
         print(f"Mean time to compute pairwise feature matches: {self.results['mean_matching_seconds']:.4f} s")
         print(f"Mean number of matches: {self.results['mean_match_count']:d}")
         print(f"Mean number of inlier matches: {self.results['mean_inlier_count']:d}")
-        print(f"Mean reprojection error of all matches: {self.results['mean_match_error']:.4f}")
-        print(f"Mean reprojection error for inliers only:  {self.results['mean_inlier_error']:.4f}")
-        for threshold in self.cfg.EVAL.ERROR_THRESHOLDS:
-            print(f"Corner error AUC@{threshold:2d}px: {self.results_corner_error[str(threshold)] * 100:.4f}%")
 
         print("============================================================")
         print("Image stitching results:")
         print("============================================================")
-        print(f"        RMSE: {fmean(self.results['RMSE']):.4f}")
-        print(f"        PSNR: {fmean(self.results['PSNR']):.4f}")
-        print(f"        SSIM: {fmean(self.results['SSIM']):.4f}")
         print(f" EMSIQA-BASE: {fmean(self.results['EMSIQA-BASE']):.4f}")
         print(f"EMSIQA-RIDGE: {fmean(self.results['EMSIQA-RIDGE']):.4f}")
         print(f" EMSIQA-BOTH: {fmean(self.results['EMSIQA-BOTH']):.4f}")
@@ -142,49 +132,6 @@ class DEMISEvaluator:
 
         # Filter all outliers.
         return matches2[inliers_map], matches1[inliers_map]
-
-    def _get_reprojection_error(self, matches1, matches2, transformation_gt):
-        """Calculate the reprojection error between two image tiles.
-
-        :param matches1: Matching keypoints from the source image tile.
-        :param matches2: Matching keypoints from the target image tile.
-        :param transformation_gt: Ground truth transformation to use for the error calculation.
-        :return: Calculated reprojection error for each keypoint match.
-        """
-        # Convert source matches to target coordinate space.
-        transformed_matches1 = np.pad(matches1, ((0, 0), (0, 1)), constant_values=1)
-        transformed_matches1 = transformation_gt @ transformed_matches1.T
-        transformed_matches1[0] /= transformed_matches1[2]
-        transformed_matches1[1] /= transformed_matches1[2]
-        transformed_matches1 = transformed_matches1[:2].T
-
-        # Return the summed reprojection error and the number of matches used.
-        return np.linalg.norm(transformed_matches1 - matches2, axis=1).sum()
-
-    def _get_corner_error(self, img_shape, transformation_gt, transformation):
-        """Calculate the corner error between two image tiles for all four corners.
-
-        :param img_shape: Shape of the image tile.
-        :param transformation_gt: Ground truth transformation to use for the error calculation.
-        :param transformation: Transformation to evaluate against the ground truth one.
-        :return: Calculated corner error for each tile corner.
-        """
-        # Get corner positions in homogenous coordinates.
-        corners = np.array([[0, img_shape[1], img_shape[1], 0], [0, 0, img_shape[0], img_shape[0]], [1, 1, 1, 1]])
-
-        # Concert the corners to the target coordinate space using each transformation.
-        corners_gt = transformation_gt @ corners
-        corners_gt[0] /= corners_gt[2]
-        corners_gt[1] /= corners_gt[2]
-        corners_gt = corners_gt[:2].T
-
-        corners = transformation @ corners
-        corners[0] /= corners[2]
-        corners[1] /= corners[2]
-        corners = corners[:2].T
-
-        # Return the corner errors.
-        return np.linalg.norm(corners - corners_gt, axis=1)
 
     def _get_flow_errors(self, overlap_region1, overlap_region2, overlap_mask, plot_prefix=""):
         """Calculates errors based on optical flow differences between two overlapping image regions.
@@ -297,8 +244,8 @@ class DEMISEvaluator:
             # cv2.imwrite(f"output/{plot_prefix}overlap_transformed_combined.png", overlap_transformed_combined)
             # cv2.imwrite(f"output/{plot_prefix}mask.png", overlap_mask)
             # cv2.imwrite(f"output/{plot_prefix}mask_transformed.png", mask_transformed)
-            cv2.imwrite(f"output/{plot_prefix}threshold_otsu_0.png", threshold1_otsu)
-            cv2.imwrite(f"output/{plot_prefix}threshold_otsu_1.png", threshold2_otsu)
+            # cv2.imwrite(f"output/{plot_prefix}threshold_otsu_0.png", threshold1_otsu)
+            # cv2.imwrite(f"output/{plot_prefix}threshold_otsu_1.png", threshold2_otsu)
             # cv2.imwrite(f"output/{plot_prefix}threshold_ridges_0.png", threshold1_ridges)
             # cv2.imwrite(f"output/{plot_prefix}threshold_ridges_1.png", threshold2_ridges)
             # cv2.imwrite(f"output/{plot_prefix}threshold_both_0.png", threshold1_both)
@@ -364,50 +311,40 @@ class DEMISEvaluator:
             "seconds_per_image": 0,
             "matching_seconds": 0,
             "match_count": 0,
-            "total_match_error": 0,
             "inlier_count": 0,
-            "total_inlier_error": 0,
             "mean_seconds_per_image": 0,
             "mean_matching_seconds": 0,
             "mean_match_count": 0,
-            "mean_match_error": 0,
             "mean_inlier_count": 0,
-            "mean_inlier_error": 0,
-            "RMSE": [],
-            "PSNR": [],
-            "SSIM": [],
             "EMSIQA-BASE": [],
             "EMSIQA-RIDGE": [],
             "EMSIQA-BOTH": [],
             "EMSIQA-FLOW": [],
         }
 
-        psnr_infinity_counts = 0
         image_count = 0
         pair_count = 0
-        corner_errors = []
-        for i, labels in enumerate(self.labels):
-            # Get tile paths.
-            match = re.search(r"g(\d+)", os.path.basename(labels["path"]))
-            if match is None:
-                raise ValueError(f"Cannot parse labels file name: {labels['path']}.")
-            grid_index = int(match.groups()[0])
-            tile_labels = labels["tile_labels"]
-            tile_paths = self.image_paths[f"{grid_index}_0"]
-
-            print(f"[{i + 1}/{len(self.labels)}] Processing g{grid_index}...")
-
-            # Get globally optimised tile transformations.
-            start_time = default_timer()
-            tile_transformations = self.stitcher.stitch_grid(
-                tile_paths, transformations_only=True, plot_prefix=f"g{grid_index}_s00000_"
-            )
-            end_time = default_timer()
-            self.results["seconds_per_image"] += end_time - start_time
+        for i, (path_key, tile_paths) in enumerate(self.image_paths.items()):
+            grid_index, slice_index = path_key.split("_")
+            print(f"[{i + 1}/{len(self.image_paths)}] Processing g{grid_index}_{slice_index}...")
             
-            image_count += len(tile_transformations)
+            if self.transformations_path:
+                # Load precomputed tile transformations.
+                json_path = os.path.join(
+                    self.transformations_path, f"g{int(grid_index):05d}_s{int(slice_index):05d}.json"
+                )
+                tile_transformations = self.stitcher.load_transformations(json_path)
+            else:
+                # Get globally optimised tile transformations.
+                start_time = default_timer()
+                tile_transformations = self.stitcher.stitch_grid(
+                    tile_paths, transformations_only=True, plot_prefix=f"g{grid_index}_s{slice_index}_"
+                )
+                end_time = default_timer()
+                self.results["seconds_per_image"] += end_time - start_time
 
             # Go over all possible pairs.
+            image_count += len(tile_transformations)
             for position, tile_path in np.ndenumerate(tile_paths):
                 neighbors = self._get_neighboring_tiles(position, tile_paths.shape)
                 if not neighbors:
@@ -425,15 +362,6 @@ class DEMISEvaluator:
                     transformation_neigh = tile_transformations[position_neigh]
                     transformation_relative = np.linalg.inv(transformation) @ transformation_neigh
 
-                    # Calculate the ground truth homography.
-                    position_index = position[0] * tile_paths.shape[1] + position[1]
-                    position_index_neigh = position_neigh[0] * tile_paths.shape[1] + position_neigh[1]
-                    transformation_gt = self.stitcher.get_transformation_between_tiles(
-                        tile_labels1=tile_labels[position_index_neigh],
-                        tile_labels2=tile_labels[position_index],
-                        grid_labels=labels,
-                    )
-
                     # Compute keypoint matches.
                     start_time = default_timer()
                     matches, matches_neigh, _ = self.stitcher.compute_neighbor_matches(
@@ -442,89 +370,29 @@ class DEMISEvaluator:
                     end_time = default_timer()
 
                     # Get inlier matches.
-                    inliers, inliers_neigh = self._get_inliers(matches1=matches_neigh, matches2=matches)
+                    inliers, _ = self._get_inliers(matches1=matches_neigh, matches2=matches)
 
                     self.results["matching_seconds"] += end_time - start_time
                     self.results["match_count"] += matches.shape[0]
                     self.results["inlier_count"] += inliers.shape[0]
 
-                    # Calculate reprojection errors.
-                    matches_error = self._get_reprojection_error(
-                        matches1=matches_neigh, matches2=matches, transformation_gt=transformation_gt
-                    )
-                    inliers_error = self._get_reprojection_error(
-                        matches1=inliers_neigh, matches2=inliers, transformation_gt=transformation_gt
-                    )
-
-                    self.results["total_match_error"] += matches_error
-                    self.results["total_inlier_error"] += inliers_error
-
-                    # Calculate corner errors.
-                    matches_error = self._get_corner_error(
-                        img_shape=img.shape,
-                        transformation_gt=transformation_gt,
-                        transformation=transformation_relative,
-                    )
-                    corner_errors += matches_error.tolist()
-
                     # Create stitching trees representing the stitched images.
                     root = TileNode(cfg=self.cfg, img=img, position=position, transformation=np.identity(3))
-                    node_gt = TileNode(
-                        cfg=self.cfg, img=img_neigh, position=position_neigh, transformation=transformation_gt
-                    )
                     node = TileNode(
                         cfg=self.cfg, img=img_neigh, position=position_neigh, transformation=transformation_relative
                     )
-
-                    # Stitch and evaluate the image pairs.
-                    img_stitched, pos = self.stitcher.stitch_mst_nodes([root, node])
-                    img_gt, pos_gt = self.stitcher.stitch_mst_nodes([root, node_gt])
-
-                    # Align image centers and dimensions.
-                    img_gt_aligned, img_aligned, _ = self._align_images(img_gt, img_stitched, pos_gt, pos)
-
-                    # Evaluate the stitching.
-                    psnr = peak_signal_noise_ratio(img_gt_aligned, img_aligned)
-                    self.results["RMSE"].append(np.sqrt(mean_squared_error(img_gt_aligned, img_aligned)))
-                    if np.isinf(psnr):
-                        psnr_infinity_counts += 1
-                    else:
-                        self.results["PSNR"].append(psnr)
-                    self.results["SSIM"].append(structural_similarity(img_gt_aligned, img_aligned))
 
                     # Evaluate stitching results using optical flow.
                     warped_images, warped_masks, _ = self.stitcher.stitch_mst_nodes(
                         [root, node], separate=True, masks=True
                     )
-            
-                    _, threshold_otsu = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                    _, threshold_otsu_neigh = cv2.threshold(img_neigh, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                    
-                    # cv2.imwrite(
-                    #     f"output/g{grid_index}_s00000_{position}_{position_neigh}_full_img1.png",
-                    #     warped_images[0],
-                    # )
-                    # cv2.imwrite(
-                    #     f"output/g{grid_index}_s00000_{position}_{position_neigh}_full_img2.png",
-                    #     warped_images[1],
-                    # )
-                    
                     cv2.imwrite(
-                        f"output/g{grid_index}_s00000_{position}_{position_neigh}_src_img1.png",
-                        img,
+                        f"output/g{grid_index}_s{slice_index}_{position}_{position_neigh}_full_img1.png",
+                        warped_images[0],
                     )
                     cv2.imwrite(
-                        f"output/g{grid_index}_s00000_{position}_{position_neigh}_src_img2.png",
-                        img_neigh,
-                    )
-                    
-                    cv2.imwrite(
-                        f"output/g{grid_index}_s00000_{position}_{position_neigh}_full_img1.png",
-                        threshold_otsu,
-                    )
-                    cv2.imwrite(
-                        f"output/g{grid_index}_s00000_{position}_{position_neigh}_full_img2.png",
-                        threshold_otsu_neigh,
+                        f"output/g{grid_index}_s{slice_index}_{position}_{position_neigh}_full_img2.png",
+                        warped_images[1],
                     )
                     overlap_regions, overlap_mask = self.stitcher.get_overlap_region(
                         warped_images, warped_masks, cropped=True
@@ -533,24 +401,15 @@ class DEMISEvaluator:
                         overlap_regions[0],
                         overlap_regions[1],
                         overlap_mask,
-                        # f"g{grid_index}_s00000_{position}_{position_neigh}_",
+                        f"g{grid_index}_s{slice_index}_{position}_{position_neigh}_",
                     )
                     self.results["EMSIQA-BASE"].append(flow_errors["EMSIQA-BASE"])
                     self.results["EMSIQA-RIDGE"].append(flow_errors["EMSIQA-RIDGE"])
                     self.results["EMSIQA-BOTH"].append(flow_errors["EMSIQA-BOTH"])
                     self.results["EMSIQA-FLOW"].append(flow_errors["EMSIQA-FLOW"])
 
-        # Calculate mean reprojection errors and counts.
+        # Calculate mean statistics.
         self.results["mean_seconds_per_image"] = self.results["seconds_per_image"] / image_count
         self.results["mean_matching_seconds"] = self.results["matching_seconds"] / pair_count
         self.results["mean_match_count"] = round(self.results["match_count"] / pair_count)
-        self.results["mean_match_error"] = self.results["total_match_error"] / self.results["match_count"]
         self.results["mean_inlier_count"] = round(self.results["inlier_count"] / pair_count)
-        self.results["mean_inlier_error"] = self.results["total_inlier_error"] / self.results["inlier_count"]
-        
-        # Replace infinities in PSNR by maximum detected PSNR from all other image pairs.
-        psnr_max = np.max(self.results["PSNR"])
-        self.results["PSNR"].extend(psnr_infinity_counts * [psnr_max])
-
-        # Calculate AUC results (also add mean counts for consistency).
-        self.results_corner_error = error_auc(corner_errors, self.cfg.EVAL.ERROR_THRESHOLDS, False)

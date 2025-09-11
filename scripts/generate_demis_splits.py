@@ -5,23 +5,23 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
+
 import argparse
-import numpy as np
 import os
 import re
+
+import numpy as np
 from numpy.random import permutation
+
 from src.config.config import get_cfg_defaults
 from src.dataset.demis_loader import DemisLoader
-from src.pipeline.image_loader import ImageLoader
 from src.pipeline.demis_stitcher import DemisStitcher
-
+from src.pipeline.image_loader import ImageLoader
 
 if __name__ == "__main__":
     # Parse arguments.
     parser = argparse.ArgumentParser(description="DEMIS dataset splitter")
-    parser.add_argument(
-        "cfg_path", type=str, help="path to DEMIS stitching configuration"
-    )
+    parser.add_argument("cfg_path", type=str, help="path to DEMIS stitching configuration")
     parser.add_argument(
         "-v",
         "--validation-grids",
@@ -70,18 +70,13 @@ if __name__ == "__main__":
     for i, grid_labels in enumerate(labels):
         match = re.search(r"g(\d+)", os.path.basename(grid_labels["path"]))
         if match is None:
-            raise ValueError(
-                "Cannot parse labels file name: " f"{grid_labels['path']}."
-            )
+            raise ValueError("Cannot parse labels file name: " f"{grid_labels['path']}.")
         grid_index = int(match.groups()[0])
         grid_title = os.path.splitext(os.path.basename(grid_labels["path"]))[0]
         split_filenames.append(grid_title)
         tile_labels = grid_labels["tile_labels"]
         tile_paths = full_image_paths[f"{grid_index}_0"]
-        print(
-            f"[{i + 1}/{len(labels)}] Generating indices for labels file "
-            f"{grid_title}..."
-        )
+        print(f"[{i + 1}/{len(labels)}] Generating indices for labels file " f"{grid_title}...")
 
         # Go over all possible image pairs in the grid (scene) and add them to the
         # scene info.
@@ -130,9 +125,7 @@ if __name__ == "__main__":
         file_val.write("\n".join(permutation(split_filenames_val)))
 
     output_path_test = os.path.join(splits_dir, "test_list.txt")
-    split_filenames_test = split_filenames[
-        val_split_size : val_split_size + test_split_size
-    ]
+    split_filenames_test = split_filenames[val_split_size : val_split_size + test_split_size]
     with open(output_path_test, "w") as file_test:
         file_test.write("\n".join(permutation(split_filenames_test)))
 

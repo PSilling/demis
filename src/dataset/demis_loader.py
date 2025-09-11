@@ -4,9 +4,11 @@ Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
 Year: 2023
 """
-import re
+
 import os
+import re
 from glob import glob
+
 from src.dataset.dataset_loader import DatasetLoader
 
 
@@ -41,9 +43,7 @@ class DemisLoader(DatasetLoader):
                 groups = match.groups()
                 tile_labels.append(
                     {
-                        "path": os.path.normpath(
-                            os.path.join(os.path.dirname(path), groups[0])
-                        ),
+                        "path": os.path.normpath(os.path.join(os.path.dirname(path), groups[0])),
                         "grid_position": (int(groups[1]), int(groups[2])),
                         "position": (int(groups[3]), int(groups[4])),
                         "angle": int(groups[5]),
