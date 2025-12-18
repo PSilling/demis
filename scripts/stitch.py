@@ -59,7 +59,6 @@ if __name__ == "__main__":
         opts = []
         for opt in extra_opts:
             opts.extend(opt.split("="))
-        print("Overriding config options:", opts)
         cfg.merge_from_list(opts)
     cfg.freeze()
 

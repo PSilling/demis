@@ -58,9 +58,7 @@ class GridStitcher:
         if cfg.STITCHER.MATCHING_METHOD == "loftr":
             # Prepare LoFTR for matching using outdoor weights (better than indoor).
             self.img_processors["loftr"] = LoFTR(config=default_cfg)
-            self.img_processors["loftr"].load_state_dict(
-                torch.load(cfg.LOFTR.CHECKPOINT_PATH, weights_only=False)["state_dict"]
-            )
+            self.img_processors["loftr"].load_state_dict(torch.load(cfg.LOFTR.CHECKPOINT_PATH)["state_dict"])
             self.img_processors["loftr"] = self.img_processors["loftr"].eval().cuda()
         elif cfg.STITCHER.MATCHING_METHOD in ("sift", "surf"):
             if cfg.STITCHER.MATCHING_METHOD == "sift":

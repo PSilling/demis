@@ -21,7 +21,12 @@ from src.pipeline.image_loader import ImageLoader
 if __name__ == "__main__":
     # Parse arguments.
     parser = argparse.ArgumentParser(description="DEMIS dataset splitter")
-    parser.add_argument("cfg_path", type=str, help="path to DEMIS stitching configuration")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        help="path to DEMIS stitching configuration",
+    )
     parser.add_argument(
         "-v",
         "--validation-grids",
@@ -36,11 +41,20 @@ if __name__ == "__main__":
         default=60,
         help="number of image grids for testing",
     )
-    args = parser.parse_args()
+    args, extra_opts = parser.parse_known_args()
 
-    # Check path validity.
-    if not os.access(args.cfg_path, os.R_OK):
-        raise ValueError(f"Cannot read configuration file {args.cfg_path}.")
+    # Prepare the evaluation configuration. Load the configuration file if given.
+    cfg = get_cfg_defaults()
+    if args.config and os.access(args.config, os.R_OK):
+        cfg.merge_from_file(args.config)
+
+    # Merge overrides specified via KEY=VALUE pairs.
+    if extra_opts:
+        opts = []
+        for opt in extra_opts:
+            opts.extend(opt.split("="))
+        cfg.merge_from_list(opts)
+    cfg.freeze()
 
     # Configure split sizes.
     train_split_size = None
@@ -48,9 +62,6 @@ if __name__ == "__main__":
     test_split_size = max(args.test_grids, 0)
 
     # Configure paths.
-    cfg = get_cfg_defaults()
-    cfg.merge_from_file(args.cfg_path)
-    cfg.freeze()
     indices_dir = os.path.join(cfg.DATASET.PATH, "indices")
     splits_dir = os.path.join(cfg.DATASET.PATH, "splits")
 

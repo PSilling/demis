@@ -327,7 +327,7 @@ class GridEvaluator:
         for i, (path_key, tile_paths) in enumerate(self.image_paths.items()):
             grid_index, slice_index = path_key.split("_")
             print(f"[{i + 1}/{len(self.image_paths)}] Processing g{grid_index}_{slice_index}...")
-            
+
             if self.transformations_path:
                 # Load precomputed tile transformations.
                 json_path = os.path.join(
@@ -384,7 +384,10 @@ class GridEvaluator:
 
                     # Evaluate stitching results using optical flow.
                     warped_images, warped_masks, _ = self.stitcher.stitch_mst_nodes(
-                        [root, node], separate=True, masks=True
+                        [root, node],
+                        separate=True,
+                        masks=True,
+                        no_color=True,
                     )
                     cv2.imwrite(
                         f"output/g{grid_index}_s{slice_index}_{position}_{position_neigh}_full_img1.png",

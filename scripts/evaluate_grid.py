@@ -14,7 +14,12 @@ from src.eval.grid_evaluator import GridEvaluator
 if __name__ == "__main__":
     # Parse arguments.
     parser = argparse.ArgumentParser(description="DEMIS tool evaluator for generic datasets")
-    parser.add_argument("cfg_path", type=str, help="path to evaluation configuration")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        help="path to evaluation configuration",
+    )
     parser.add_argument(
         "-t",
         "--transformations-path",
@@ -23,25 +28,31 @@ if __name__ == "__main__":
         help="path to a directory with precomputed global tile transformations",
     )
     parser.add_argument(
-        "-c",
-        "--count",
+        "-n",
+        "--number",
         type=int,
         default=None,
         help="maximum number of images to evaluate",
     )
-    args = parser.parse_args()
+    args, extra_opts = parser.parse_known_args()
 
     # Check path validity.
-    if not os.access(args.cfg_path, os.R_OK):
-        raise ValueError(f"Cannot read configuration file {args.cfg_path}.")
-    
     if args.transformations_path and not os.path.isdir(args.transformations_path):
         raise ValueError(f"Cannot access transformations directory {args.transformations_path}.")
 
-    # Parse the configuration file.
+    # Prepare the evaluation configuration. Load the configuration file if given.
     cfg = get_cfg_defaults()
-    cfg.merge_from_file(args.cfg_path)
+    if args.config and os.access(args.config, os.R_OK):
+        cfg.merge_from_file(args.config)
+
+    # Merge overrides specified via KEY=VALUE pairs.
+    if extra_opts:
+        opts = []
+        for opt in extra_opts:
+            opts.extend(opt.split("="))
+        cfg.merge_from_list(opts)
+    cfg.freeze()
 
     # Run the evaluation.
-    evaluator = GridEvaluator(cfg, args.transformations_path, args.count)
+    evaluator = GridEvaluator(cfg, args.transformations_path, args.number)
     evaluator.run()
