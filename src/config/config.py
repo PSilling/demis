@@ -16,6 +16,8 @@ _C.EVAL = CN()
 # Dataset configuration.
 _C.DATASET.PATH = "datasets/DEMIS/"
 _C.DATASET.TILE_OVERLAP = 0.3
+_C.DATASET.ROWS = None
+_C.DATASET.COLS = None
 
 # Stitching configuration.
 _C.STITCHER.OUTPUT_PATH = "output/DEMIS/"

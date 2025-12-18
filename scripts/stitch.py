@@ -20,7 +20,12 @@ from src.pipeline.image_loader import ImageLoader
 if __name__ == "__main__":
     # Parse arguments.
     parser = argparse.ArgumentParser(description="DEMIS tool for stitching grids of electron microscopy images")
-    parser.add_argument("cfg_path", type=str, help="path to DEMIS stitching configuration")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        help="path to DEMIS stitching configuration",
+    )
     parser.add_argument(
         "-d",
         "--use-demis-labels",
@@ -41,15 +46,21 @@ if __name__ == "__main__":
         action="append",
         help="index of a slice to stitch (can be used multiple times)",
     )
-    args = parser.parse_args()
 
-    # Check path validity.
-    if not os.access(args.cfg_path, os.R_OK):
-        raise ValueError(f"Cannot read configuration file {args.cfg_path}.")
+    args, extra_opts = parser.parse_known_args()
 
-    # Prepare the stitching configuration.
+    # Prepare the stitching configuration. Load the configuration file if given.
     cfg = get_cfg_defaults()
-    cfg.merge_from_file(args.cfg_path)
+    if args.config and os.access(args.config, os.R_OK):
+        cfg.merge_from_file(args.config)
+
+    # Merge overrides specified via KEY=VALUE pairs.
+    if extra_opts:
+        opts = []
+        for opt in extra_opts:
+            opts.extend(opt.split("="))
+        print("Overriding config options:", opts)
+        cfg.merge_from_list(opts)
     cfg.freeze()
 
     # Check is the DEMIS dataset is in use.
