@@ -8,6 +8,7 @@ Year: 2023
 import argparse
 import os
 import re
+import warnings
 
 import cv2
 
@@ -46,6 +47,12 @@ if __name__ == "__main__":
         action="append",
         help="index of a slice to stitch (can be used multiple times)",
     )
+    parser.add_argument(
+        "-p",
+        "--plugin-mode",
+        action="store_true",
+        help="run in plugin mode (for ImageJ integration)",
+    )
 
     args, extra_opts = parser.parse_known_args()
 
@@ -62,10 +69,14 @@ if __name__ == "__main__":
         cfg.merge_from_list(opts)
     cfg.freeze()
 
-    # Check is the DEMIS dataset is in use.
+    # Suppress all warnings if in plugin mode.
+    if args.plugin_mode:
+        warnings.filterwarnings("ignore")
+
+    # Check if the DEMIS dataset is in use.
     images_path = os.path.join(cfg.DATASET.PATH, "images")
     labels_path = os.path.join(cfg.DATASET.PATH, "labels")
-    is_demis = os.path.isdir(images_path) and os.path.isdir(labels_path)
+    is_demis = os.path.isdir(images_path) and os.path.isdir(labels_path) and not args.plugin_mode
 
     # Load image paths.
     if is_demis:
@@ -73,7 +84,7 @@ if __name__ == "__main__":
         labels = loader.load_labels()
         image_paths = loader.load_paths(labels)
     else:
-        loader = DatasetLoader(cfg.DATASET.PATH)
+        loader = DatasetLoader(cfg.DATASET.PATH, cfg.DATASET.ROWS, cfg.DATASET.COLS)
         image_paths = loader.load_paths()
 
     # Parse the selected grid and slice indices.

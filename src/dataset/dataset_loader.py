@@ -15,12 +15,16 @@ import numpy as np
 class DatasetLoader:
     """Standard class for loading datasets of EM image tiles from a directory."""
 
-    def __init__(self, path):
+    def __init__(self, path, rows=None, cols=None):
         """DatasetLoader constructor.
 
         :param path: Path to the base dataset directory.
+        :param rows: Number of rows in the grid. Inferred from directory name if None.
+        :param cols: Number of columns in the grid. Inferred from directory name if None.
         """
         self.path = path
+        self.rows = rows
+        self.cols = cols
 
     def parse_grid_size(self):
         """Parses the expected grid size from the current dataset directory path.
@@ -94,6 +98,6 @@ class DatasetLoader:
         if not os.path.isdir(self.path):
             raise ValueError(f"Cannot read directory: {self.path}")
 
-        grid_size = self.parse_grid_size()
+        grid_size = (self.rows, self.cols) if self.rows and self.cols else self.parse_grid_size()
         paths = glob(os.path.join(self.path, "*.*"))
         return self.get_image_paths(paths, grid_size)

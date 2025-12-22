@@ -51,7 +51,7 @@ class GridEvaluator:
         self.raft = raft(pretrained=True, progress=False).to(self.device).eval()
 
         # Load dataset paths.
-        loader = DatasetLoader(self.cfg.DATASET.PATH)
+        loader = DatasetLoader(self.cfg.DATASET.PATH, self.cfg.DATASET.ROWS, self.cfg.DATASET.COLS)
         self.image_paths = loader.load_paths()
 
         # Limit the number of grid slices.
