@@ -52,8 +52,8 @@ uv sync
 
 3. Set `PYTHONPATH` to the root of the repository.
 
-- **Linux:**: `export PYTHONPATH=$PWD`
-- **Windows:**: `$env:PYTHONPATH = $PWD` (PowerShell)
+- **Linux**: `export PYTHONPATH=$PWD`
+- **Windows**: `$env:PYTHONPATH = $PWD` (PowerShell)
 
 4. Download weights for LoFTR:
 

@@ -14,7 +14,7 @@
 
 	<groupId>com.tescan</groupId>
 	<artifactId>DEMIS</artifactId>
-	<version>0.1.0</version>
+	<version>0.2.0</version>
 
 	<name>DEMIS</name>
 	<description>ImageJ plugin for DEMIS.</description>
