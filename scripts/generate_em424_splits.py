@@ -1,5 +1,5 @@
 """Synthesizes LoFTR splits and the corresponding LoFTR split indices
-for the DEMIS dataset.
+for the EM424 dataset.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
@@ -14,18 +14,18 @@ import numpy as np
 from numpy.random import permutation
 
 from src.config.config import get_cfg_defaults
-from src.dataset.demis_loader import DemisLoader
-from src.pipeline.demis_stitcher import DemisStitcher
+from src.dataset.em424_loader import EM424Loader
+from src.pipeline.em424_stitcher import EM424Stitcher
 from src.pipeline.image_loader import ImageLoader
 
 if __name__ == "__main__":
     # Parse arguments.
-    parser = argparse.ArgumentParser(description="DEMIS dataset splitter")
+    parser = argparse.ArgumentParser(description="EM424 dataset splitter")
     parser.add_argument(
         "-c",
         "--config",
         type=str,
-        help="path to DEMIS stitching configuration",
+        help="path to EM424 stitching configuration",
     )
     parser.add_argument(
         "-v",
@@ -65,14 +65,14 @@ if __name__ == "__main__":
     indices_dir = os.path.join(cfg.DATASET.PATH, "indices")
     splits_dir = os.path.join(cfg.DATASET.PATH, "splits")
 
-    # Load the DEMIS labels.
-    loader = DemisLoader(cfg.DATASET.PATH)
+    # Load the EM424 labels.
+    loader = EM424Loader(cfg.DATASET.PATH)
     labels = loader.load_labels()
     full_image_paths = loader.load_paths(labels)
 
     # Prepare for homography calculation.
     cache = ImageLoader(cfg)
-    stitcher = DemisStitcher(cfg, cache)
+    stitcher = EM424Stitcher(cfg, cache)
 
     # Generate a set of LoFTR indices for each labels file.
     split_filenames = []

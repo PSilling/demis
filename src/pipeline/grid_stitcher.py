@@ -74,7 +74,7 @@ class GridStitcher:
             self.img_processors["orb"] = cv2.ORB_create()
             self.img_processors["bfmatcher"] = cv2.BFMatcher(cv2.NORM_HAMMING)
         else:
-            raise ValueError("Invalid matching method: " f"{self.cfg.STITCHER.MATCHING_METHOD}")
+            raise ValueError(f"Invalid matching method: {self.cfg.STITCHER.MATCHING_METHOD}")
 
         # Create a stitcher for individual tiles.
         self.tile_stitcher = TileStitcher(cfg=cfg, img_processors=self.img_processors)
@@ -145,7 +145,7 @@ class GridStitcher:
         elif self.cfg.STITCHER.CONSTRUCTION_METHOD == "optimised":
             return self.stitch_grid_optimised(tile_paths, transformations_only, plot_prefix)
         else:
-            raise ValueError("Invalid grid construction method: " f"{self.cfg.STITCHER.CONSTRUCTION_METHOD}")
+            raise ValueError(f"Invalid grid construction method: {self.cfg.STITCHER.CONSTRUCTION_METHOD}")
 
     def stitch_grid_optimised(self, tile_paths, transformations_only=False, plot_prefix=""):
         """Stitch images in a grid using global least squares optimisation. Supports translation,
@@ -226,7 +226,7 @@ class GridStitcher:
                 match_count = len(matches)
                 total_match_count += match_count
                 if match_count < 3:
-                    print("Not enough matches found for image pair: " f"{(tile_path, neighbor_path)}")
+                    print(f"Not enough matches found for image pair: {(tile_path, neighbor_path)}")
                     continue
 
                 # Build vertices with initial position estimates.
@@ -246,36 +246,15 @@ class GridStitcher:
             args=(indexed_matches, total_match_count, shape),
         )
 
-        # Print final parameters.
-        # print("Final parameters:")
-        # lmfit.report_fit(result.params)
-
         # Convert the graph to a simple MST (all nodes connected directly to the root node).
-        # The MST can then be usedto stitch the grid.
+        # The MST can then be used to stitch the grid.
         tile_nodes = self._optimised_result_to_mst(result.params, tile_paths)
 
         # If optical flow refinement is disabled, return the stitched grid.
         if not self.cfg.STITCHER.OPTICAL_FLOW_REFINEMENT:
             return self.stitch_mst_nodes(tile_nodes, transformations_only)
 
-        # # Debug: Visualize original matches in the coarsely stitched image
-        # coarse_stitched_img, _ = self.stitch_mst_nodes(tile_nodes, False, no_color=True)
-        # debug_img = (
-        #     cv2.cvtColor(coarse_stitched_img.copy(), cv2.COLOR_GRAY2BGR)
-        #     if coarse_stitched_img.ndim == 2
-        #     else coarse_stitched_img.copy()
-        # )
-        # for (index, index_neigh), (points1, points2, _) in indexed_matches.items():
-        #     # Draw lines between corresponding points
-        #     for pt1, pt2 in zip(points1, points2):
-        #         pt1_int = tuple(np.round(pt1).astype(int))
-        #         pt2_int = tuple(np.round(pt2).astype(int))
-        #         cv2.circle(debug_img, pt1_int, 2, (0, 255, 0), -1)
-        #         cv2.line(debug_img, pt1_int, pt2_int, (0, 0, 255), 1)
-        # cv2.imwrite("output/stitched_original_matches.png", debug_img)
-
         # Calculate optical flow for each overlapping pair (EMSIQA-FLOW style).
-        i = 0
         node_map = {n.position: n for n in tile_nodes}
         refinement_indexed_matches = {}
         refinement_match_count = 0
@@ -365,6 +344,7 @@ class GridStitcher:
 
                     # Apply the optical flow to the valid sampled points.
                     flow_vectors = flow[valid_points[:, 1], valid_points[:, 0]]  # (N, 2)
+
                     # Move points to full-image coordinates
                     points1 = (valid_points + np.array([min_x, min_y])).astype(np.float32)
                     points2 = (valid_points + flow_vectors + np.array([min_x, min_y])).astype(np.float32)
@@ -383,20 +363,7 @@ class GridStitcher:
                     points1 = cv2.perspectiveTransform(points1.reshape(-1, 1, 2), T).reshape(-1, 2)
                     points2 = cv2.perspectiveTransform(points2.reshape(-1, 1, 2), M).reshape(-1, 2)
 
-                    # # Debug: Visualize the grid points on the warped_images.
-                    # debug_img = warped_images[0].copy()
-                    # for pt in points1:
-                    #     pt_int = tuple(np.round(pt).astype(int))
-                    #     cv2.circle(debug_img, pt_int, 2, (255, 255, 255), -1)
-                    # cv2.imwrite(f"output/g{i}_s{i}_{node.position}_{node_neigh.position}_grid_points_0.png", debug_img)
-
-                    # debug_img = warped_images[1].copy()
-                    # for pt in points2:
-                    #     pt_int = tuple(np.round(pt).astype(int))
-                    #     cv2.circle(debug_img, pt_int, 2, (255, 255, 255), -1)
-                    # cv2.imwrite(f"output/g{i}_s{i}_{node.position}_{node_neigh.position}_grid_points_1.png", debug_img)
-
-                    # Store the refined matches in 'refinement_indexed_matches' dictionary.
+                    # Store the refined matches in a dictionary.
                     idx1 = position[0] * grid_size[1] + position[1]
                     idx2 = position_neigh[0] * grid_size[1] + position_neigh[1]
                     conf = np.ones(len(points1))  # Confidence is set to 1 for all points.
@@ -411,22 +378,6 @@ class GridStitcher:
             args=(refinement_indexed_matches, refinement_match_count, shape),
         )
         tile_nodes_refined = self._optimised_result_to_mst(result_refined.params, tile_paths)
-
-        # # Debug: Visualize original matches in the finely stitched image
-        # fine_stitched_img, _ = self.stitch_mst_nodes(tile_nodes_refined, False, no_color=True)
-        # debug_img = (
-        #     cv2.cvtColor(fine_stitched_img.copy(), cv2.COLOR_GRAY2BGR)
-        #     if fine_stitched_img.ndim == 2
-        #     else fine_stitched_img.copy()
-        # )
-        # for (index, index_neigh), (points1, points2, _) in refinement_indexed_matches.items():
-        #     # Draw lines between corresponding points
-        #     for pt1, pt2 in zip(points1, points2):
-        #         pt1_int = tuple(np.round(pt1).astype(int))
-        #         pt2_int = tuple(np.round(pt2).astype(int))
-        #         cv2.circle(debug_img, pt1_int, 2, (0, 255, 0), -1)
-        #         cv2.line(debug_img, pt1_int, pt2_int, (0, 0, 255), 1)
-        # cv2.imwrite("output/stitched_refined_matches.png", debug_img)
 
         return self.stitch_mst_nodes(tile_nodes_refined, transformations_only)
 
@@ -509,7 +460,7 @@ class GridStitcher:
 
                 # Ensure there is enough matches.
                 if len(matches) < 3:
-                    print("Not enough matches found for image pair: " f"{(tile_path, neighbor_path)}")
+                    print(f"Not enough matches found for image pair: {(tile_path, neighbor_path)}")
                     continue
 
                 # Calculate the neighbor transformation.
@@ -578,10 +529,7 @@ class GridStitcher:
 
         # Find keypoint matches between each pair of adjacent image tiles. By default, the algorithm
         # starts from the middle of the grid so that any misalignments are distributed as evenly as possible.
-        if self.cfg.STITCHER.ROOT_TILE:
-            position = self.cfg.STITCHER.ROOT_TILE
-        else:
-            position = (grid_size[0] // 2, grid_size[1] // 2)
+        position = self.cfg.STITCHER.ROOT_TILE or (grid_size[0] // 2, grid_size[1] // 2)
 
         node = None
         processed_tiles = 0
@@ -659,7 +607,7 @@ class GridStitcher:
 
                     # Ensure there is enough matches.
                     if len(matches) < 3 or (self.cfg.STITCHER.TRANSFORM_TYPE == "projective" and len(matches) < 4):
-                        print("Not enough matches found for image pair: " f"{(tile_path, neighbor_path)}")
+                        print(f"Not enough matches found for image pair: {(tile_path, neighbor_path)}")
                         continue
 
                     node_neigh = TileNode(

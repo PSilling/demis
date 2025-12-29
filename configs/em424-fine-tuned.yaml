@@ -1,15 +1,18 @@
 DATASET:
-  PATH: "datasets/DEMIS"
+  PATH: "datasets/EM424"
   TILE_OVERLAP: 0.3
 STITCHER:
-  RESOLUTION_RATIO: 1.0
+  OUTPUT_PATH: "output/EM424-optimised-finetuned"
+  RESOLUTION_RATIO: 0.5
   MATCHING_METHOD: "loftr"
   TRANSFORM_TYPE: "euclidean"
   CONSTRUCTION_METHOD: "optimised"
   COMPOSITING_METHOD: "overwrite"
   OPTICAL_FLOW_REFINEMENT: True
   OPTICAL_FLOW_REFINEMENT_TYPE: "grid"
+  COLORED_OUTPUT: False
+  NORMALISE_INTENSITY: True
 LOFTR:
   CHECKPOINT_PATH: "LoFTR/weights/demis_ds.ckpt"
 EVAL:
-  SPLIT_PATH: "datasets/DEMIS/splits/test_list.txt"
+  SPLIT_PATH: "datasets/EM424/splits/test_list.txt"

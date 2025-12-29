@@ -1,4 +1,4 @@
-# References for the Source Images of the DEMIS Dataset
+# References for the Source Images of the EM424 Dataset
 
 The source images were retrieved from [EMPIAR](https://www.ebi.ac.uk/empiar/) and
 [Cell Image Library](http://cellimagelibrary.org/). References always correspond to all

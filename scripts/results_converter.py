@@ -17,7 +17,7 @@ from glob import glob
 
 
 def convert_mist(input_path: str, output_path: str):
-    """Converts results from MIST to DEMIS format.
+    """Converts results from MIST to DEMIS/EM424 format.
 
     :param input_path: Input directory path.
     :param output_path: Output directory path.

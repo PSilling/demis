@@ -14,8 +14,8 @@ import cv2
 
 from src.config.config import get_cfg_defaults
 from src.dataset.dataset_loader import DatasetLoader
-from src.dataset.demis_loader import DemisLoader
-from src.pipeline.demis_stitcher import DemisStitcher
+from src.dataset.em424_loader import EM424Loader
+from src.pipeline.em424_stitcher import EM424Stitcher
 from src.pipeline.image_loader import ImageLoader
 
 if __name__ == "__main__":
@@ -29,9 +29,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-d",
-        "--use-demis-labels",
+        "--use-em424-labels",
         action="store_true",
-        help="stitch the DEMIS dataset using its labels",
+        help="stitch the EM424 dataset using its labels",
     )
     parser.add_argument(
         "-g",
@@ -73,14 +73,14 @@ if __name__ == "__main__":
     if args.plugin_mode:
         warnings.filterwarnings("ignore")
 
-    # Check if the DEMIS dataset is in use.
+    # Check if the EM424 dataset is in use.
     images_path = os.path.join(cfg.DATASET.PATH, "images")
     labels_path = os.path.join(cfg.DATASET.PATH, "labels")
-    is_demis = os.path.isdir(images_path) and os.path.isdir(labels_path) and not args.plugin_mode
+    is_em424 = os.path.isdir(images_path) and os.path.isdir(labels_path) and not args.plugin_mode
 
     # Load image paths.
-    if is_demis:
-        loader = DemisLoader(cfg.DATASET.PATH)
+    if is_em424:
+        loader = EM424Loader(cfg.DATASET.PATH)
         labels = loader.load_labels()
         image_paths = loader.load_paths(labels)
     else:
@@ -96,17 +96,17 @@ if __name__ == "__main__":
 
     # Stitch image tiles in the selected grids based on the given configuration.
     img_loader = ImageLoader(cfg)
-    stitcher = DemisStitcher(cfg, img_loader)
+    stitcher = EM424Stitcher(cfg, img_loader)
     index = 1
-    if is_demis and args.use_demis_labels:
+    if is_em424 and args.use_em424_labels:
         length = len(selected_grids) if selected_grids is not None else len(labels)
         for grid_labels in labels:
             # Select grids to stitch.
             match = re.search(r"g(\d+)", os.path.basename(grid_labels["path"]))
             if match is None:
-                raise ValueError("Cannot parse labels file name: " f"{grid_labels['path']}.")
+                raise ValueError(f"Cannot parse labels file name: {grid_labels['path']}.")
             grid_index = int(match.groups()[0])
-            slice_index = 0  # The DEMIS dataset has no slices.
+            slice_index = 0  # The EM424 dataset has no slices.
             if (selected_grids is not None and int(grid_index) not in selected_grids) or (
                 selected_slices is not None and slice_index not in selected_slices
             ):
@@ -114,13 +114,12 @@ if __name__ == "__main__":
 
             # Report on current progress.
             print(
-                f"[{index}/{length}] Stitching the grid starting with image "
-                f"{grid_labels['tile_labels'][0]['path']}..."
+                f"[{index}/{length}] Stitching the grid starting with image {grid_labels['tile_labels'][0]['path']}..."
             )
             index += 1
 
             # Stitch the grid and save the result.
-            stitched_image, _ = stitcher.stitch_demis_grid_mst(grid_labels)
+            stitched_image, _ = stitcher.stitch_em424_grid_mst(grid_labels)
             out_filename = f"g{int(grid_index):05d}_s00000.png"
             out_path = os.path.join(cfg.STITCHER.OUTPUT_PATH, out_filename)
             cv2.imwrite(out_path, stitched_image)
@@ -135,7 +134,7 @@ if __name__ == "__main__":
                 continue
 
             # Report on current progress.
-            print(f"[{index}/{length}] Stitching the grid starting with image " f"{tile_paths[0, 0]}...")
+            print(f"[{index}/{length}] Stitching the grid starting with image {tile_paths[0, 0]}...")
             index += 1
 
             # Stitch the grid and save the result.

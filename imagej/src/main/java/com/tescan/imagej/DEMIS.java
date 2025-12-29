@@ -101,14 +101,14 @@ public class DEMIS<T extends RealType<T>> implements Command {
         description = "Number of rows in the image tile grid.",
         min = "1"
     )
-    private Integer gridRows = 0;
+    private Integer gridRows = 2;
 
     @Parameter(
         label = "Grid columns",
         description = "Number of columns in the image tile grid.",
         min = "1"
     )
-    private Integer gridCols = 0;
+    private Integer gridCols = 2;
 
     @Parameter(label = " ", visibility = ItemVisibility.MESSAGE)
     private String stitchingParametersLabelMargin = "";

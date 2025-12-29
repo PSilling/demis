@@ -18,7 +18,7 @@ from skimage.transform import AffineTransform, EuclideanTransform, ProjectiveTra
 from torchvision.models.optical_flow import raft_small as raft
 
 from src.dataset.dataset_loader import DatasetLoader
-from src.pipeline.demis_stitcher import DemisStitcher
+from src.pipeline.em424_stitcher import EM424Stitcher
 from src.pipeline.image_loader import ImageLoader
 from src.pipeline.tile_node import TileNode
 
@@ -45,7 +45,7 @@ class GridEvaluator:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Initialise the stitcher.
-        self.stitcher = DemisStitcher(self.cfg, self.img_loader)
+        self.stitcher = EM424Stitcher(self.cfg, self.img_loader)
 
         # Initialise RAFT.
         self.raft = raft(pretrained=True, progress=False).to(self.device).eval()
@@ -133,7 +133,7 @@ class GridEvaluator:
         # Filter all outliers.
         return matches2[inliers_map], matches1[inliers_map]
 
-    def _get_flow_errors(self, overlap_region1, overlap_region2, overlap_mask, plot_prefix=""):
+    def _get_flow_errors(self, overlap_region1, overlap_region2, overlap_mask):
         """Calculates errors based on optical flow differences between two overlapping image regions.
 
         :param overlap_region1: Overlapping region of the first image.
@@ -220,38 +220,6 @@ class GridEvaluator:
         masked_flow = flow * flow_mask
         flow_magnitude = np.mean(np.linalg.norm(masked_flow, axis=-1))
         emsiqa_results["EMSIQA-FLOW"] = flow_magnitude
-
-        if plot_prefix:
-            from torchvision.utils import flow_to_image
-
-            overlap_transformed1 = overlap_region1
-            overlap_transformed2 = cv2.remap(overlap_region2, flow_transform, None, cv2.INTER_NEAREST)
-            flow_imgs = flow_to_image(torch.tensor(flow).permute(2, 0, 1).unsqueeze(0))
-            overlap_region_combined = cv2.addWeighted(overlap_region1, 0.5, overlap_region2, 0.5, 0.0)
-            overlap_transformed_combined = cv2.addWeighted(overlap_transformed1, 0.5, overlap_transformed2, 0.5, 0.0)
-            overlap_differential = np.abs(cv2.medianBlur(overlap_region1, 5) - cv2.medianBlur(overlap_region2, 5))
-            overlap_transformed_differential = np.abs(
-                cv2.medianBlur(overlap_transformed1, 5) - cv2.medianBlur(overlap_transformed2, 5)
-            )
-
-            cv2.imwrite(f"output/{plot_prefix}overlap_0.png", overlap_region1)
-            cv2.imwrite(f"output/{plot_prefix}overlap_1.png", overlap_region2)
-            # cv2.imwrite(f"output/{plot_prefix}overlap_differential.png", overlap_differential)
-            # cv2.imwrite(f"output/{plot_prefix}overlap_transformed_0.png", overlap_transformed1)
-            # cv2.imwrite(f"output/{plot_prefix}overlap_transformed_1.png", overlap_transformed2)
-            # cv2.imwrite(f"output/{plot_prefix}overlap_transformed_differential.png", overlap_transformed_differential)
-            # cv2.imwrite(f"output/{plot_prefix}overlap_combined.png", overlap_region_combined)
-            # cv2.imwrite(f"output/{plot_prefix}overlap_transformed_combined.png", overlap_transformed_combined)
-            # cv2.imwrite(f"output/{plot_prefix}mask.png", overlap_mask)
-            # cv2.imwrite(f"output/{plot_prefix}mask_transformed.png", mask_transformed)
-            # cv2.imwrite(f"output/{plot_prefix}threshold_otsu_0.png", threshold1_otsu)
-            # cv2.imwrite(f"output/{plot_prefix}threshold_otsu_1.png", threshold2_otsu)
-            # cv2.imwrite(f"output/{plot_prefix}threshold_ridges_0.png", threshold1_ridges)
-            # cv2.imwrite(f"output/{plot_prefix}threshold_ridges_1.png", threshold2_ridges)
-            # cv2.imwrite(f"output/{plot_prefix}threshold_both_0.png", threshold1_both)
-            # cv2.imwrite(f"output/{plot_prefix}threshold_both_1.png", threshold2_both)
-            cv2.imwrite(f"output/{plot_prefix}flow.png", flow_imgs[0].permute(1, 2, 0).numpy())
-
         return emsiqa_results
 
     def _align_images(self, img1, img2, center1, center2):
@@ -389,14 +357,6 @@ class GridEvaluator:
                         masks=True,
                         no_color=True,
                     )
-                    cv2.imwrite(
-                        f"output/g{grid_index}_s{slice_index}_{position}_{position_neigh}_full_img1.png",
-                        warped_images[0],
-                    )
-                    cv2.imwrite(
-                        f"output/g{grid_index}_s{slice_index}_{position}_{position_neigh}_full_img2.png",
-                        warped_images[1],
-                    )
                     overlap_regions, overlap_mask = self.stitcher.get_overlap_region(
                         warped_images, warped_masks, cropped=True
                     )
@@ -404,7 +364,6 @@ class GridEvaluator:
                         overlap_regions[0],
                         overlap_regions[1],
                         overlap_mask,
-                        f"g{grid_index}_s{slice_index}_{position}_{position_neigh}_",
                     )
                     self.results["EMSIQA-BASE"].append(flow_errors["EMSIQA-BASE"])
                     self.results["EMSIQA-RIDGE"].append(flow_errors["EMSIQA-RIDGE"])

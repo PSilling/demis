@@ -1,4 +1,4 @@
-"""Evaluates the DEMIS tool on the DEMIS dataset.
+"""Evaluates the DEMIS tool on the EM424 dataset.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
@@ -13,7 +13,7 @@ from src.eval.demis_evaluator import DEMISEvaluator
 
 if __name__ == "__main__":
     # Parse arguments.
-    parser = argparse.ArgumentParser(description="DEMIS tool evaluator for the DEMIS dataset")
+    parser = argparse.ArgumentParser(description="DEMIS tool evaluator for the EM424 dataset")
     parser.add_argument(
         "-c",
         "--config",

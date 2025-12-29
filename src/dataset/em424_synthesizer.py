@@ -1,4 +1,4 @@
-"""DEMIS dataset synthesizer module.
+"""EM424 dataset synthesizer module.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
@@ -14,12 +14,12 @@ import cv2
 import numpy as np
 
 
-class DEMISSynthesizerConfig:
-    """DEMIS dataset synthesizer configuration."""
+class EM424SynthesizerConfig:
+    """EM424 dataset synthesizer configuration."""
 
-    INPUT_PATH = "datasets/DEMIS Source/"
-    OUTPUT_PREFIX = "demis_"
-    OUTPUT_PATH = "datasets/DEMIS/"
+    INPUT_PATH = "datasets/EM424 Source/"
+    OUTPUT_PREFIX = "em424_"
+    OUTPUT_PATH = "datasets/EM424/"
     INPUT_FILETYPE = "*"
     OUTPUT_FILETYPE = "tif"
 
@@ -36,18 +36,18 @@ class DEMISSynthesizerConfig:
     }
 
 
-class DEMISSynthesizer:
-    """Synthesizer for images in the DEMIS dataset."""
+class EM424Synthesizer:
+    """Synthesizer for images in the EM424 dataset."""
 
     def __init__(self, config):
-        """DEMISSynthesizer constructor.
+        """EM424Synthesizer constructor.
 
-        :param config: DEMIS synthesizer configuration.
+        :param config: EM424 synthesizer configuration.
         """
         self.config = config
 
-    def synthesize_demis(self):
-        """Synthesize DEMIS all images."""
+    def synthesize_em424(self):
+        """Synthesize EM424 all images."""
         # Prepare output directories.
         img_output_path = os.path.join(self.config.OUTPUT_PATH, "images")
         labels_output_path = os.path.join(self.config.OUTPUT_PATH, "labels")
@@ -55,9 +55,9 @@ class DEMISSynthesizer:
         os.makedirs(labels_output_path, exist_ok=True)
 
         # Synthesize the dataset.
-        demis_paths = self._parse_demis_paths()
-        for i, path in enumerate(demis_paths):
-            print(f"[{i + 1}/{len(demis_paths)}] Processing source image " f"{os.path.basename(path)}...")
+        em424_paths = self._parse_em424_paths()
+        for i, path in enumerate(em424_paths):
+            print(f"[{i + 1}/{len(em424_paths)}] Processing source image " f"{os.path.basename(path)}...")
             img = cv2.imread(path, cv2.IMREAD_COLOR)
 
             if img is None:
@@ -87,11 +87,11 @@ class DEMISSynthesizer:
                         f"{label[4]:< 4d}\n"
                     )
 
-    def _parse_demis_paths(self):
+    def _parse_em424_paths(self):
         """
-        Parse paths to DEMIS images. A single image or a directory are supported.
+        Parse paths to EM424 images. A single image or a directory are supported.
 
-        :return: List of paths to DEMIS images.
+        :return: List of paths to EM424 images.
         """
         if os.path.isfile(self.config.INPUT_PATH):
             paths = [self.config.INPUT_PATH]

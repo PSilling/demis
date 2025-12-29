@@ -1,4 +1,4 @@
-"""Stitcher designed for the DEMIS dataset.
+"""Stitcher designed for the EM424 dataset.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
@@ -12,9 +12,9 @@ from src.pipeline.grid_stitcher import GridStitcher
 from src.pipeline.tile_node import TileNode
 
 
-class DemisStitcher(GridStitcher):
+class EM424Stitcher(GridStitcher):
     """Specialised grid stitcher that provided additional methods to work
-    with the DEMIS dataset."""
+    with the EM424 dataset."""
 
     def get_transformation_to_reference(self, tile_labels, grid_labels):
         """Get the transformation matrix from the coordinate space of one tile
@@ -60,12 +60,12 @@ class DemisStitcher(GridStitcher):
         M2_inv = np.linalg.inv(M2)
         return M2_inv @ M1
 
-    def stitch_demis_grid_mst(self, grid_labels):
-        """Stitch DEMIS images in a grid by constructing a minimum spanning tree (MST)
-        based on the corresponding DEMIS labels.
+    def stitch_em424_grid_mst(self, grid_labels):
+        """Stitch EM424 images in a grid by constructing a minimum spanning tree (MST)
+        based on the corresponding EM424 labels.
 
-        :param grid_labels: DEMIS labels of images in a single grid.
-        :return: Stitched DEMIS grid image and the coordinates of the root tile.
+        :param grid_labels: EM424 labels of images in a single grid.
+        :return: Stitched EM424 grid image and the coordinates of the root tile.
         """
         # Get labels of the root tile.
         if self.cfg.STITCHER.ROOT_TILE:

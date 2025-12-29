@@ -7,6 +7,11 @@ __pycache__/
 tmp.*
 */.ipynb_checkpoints/*
 
+.classpath
+.project
+.settings/
+target/
+
 logs/
 weights/
 datasets/

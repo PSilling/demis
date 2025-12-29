@@ -1,4 +1,4 @@
-"""Synthesizes the DEMIS dataset.
+"""Synthesizes the EM424 dataset.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
@@ -8,11 +8,11 @@ Year: 2023
 import argparse
 import re
 
-from src.dataset.demis_synthesizer import DEMISSynthesizer, DEMISSynthesizerConfig
+from src.dataset.em424_synthesizer import EM424Synthesizer, EM424SynthesizerConfig
 
 if __name__ == "__main__":
     # Parse arguments.
-    parser = argparse.ArgumentParser(description="DEMIS dataset synthesizer")
+    parser = argparse.ArgumentParser(description="EM424 dataset synthesizer")
     parser.add_argument("src_path", type=str, help="path to the directory with source images")
     parser.add_argument("out_path", type=str, help="output directory path")
     parser.add_argument(
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Prepare synthesizer configuration.
-    config = DEMISSynthesizerConfig()
+    config = EM424SynthesizerConfig()
     config.INPUT_PATH = args.src_path
     config.OUTPUT_PATH = args.out_path
     config.OVERLAP = min(max(args.base_overlap, 0.05), 0.95)
@@ -85,5 +85,5 @@ if __name__ == "__main__":
         raise ValueError(f"Invalid resolution specification: {args.tile_resolution}")
     config.TILE_RESOLUTION = tuple(int(x) for x in match.groups())
 
-    synthesizer = DEMISSynthesizer(config)
-    synthesizer.synthesize_demis()
+    synthesizer = EM424Synthesizer(config)
+    synthesizer.synthesize_em424()

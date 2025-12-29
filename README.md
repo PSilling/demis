@@ -1,175 +1,108 @@
 # DEMIS: Deep Electron Microscopy Image Stitching
 
-Electron microscopy (EM) image stitching based on [LoFTR](https://github.com/zju3dv/LoFTR)
-feature matching. Details presented on [Excel@FIT 2023](https://excel.fit.vutbr.cz/)
-([Poster](https://excel.fit.vutbr.cz/submissions/2023/015/15_poster.pdf),
-[Commentary](https://excel.fit.vutbr.cz/submissions/2023/015/15.pdf)), a student
-conference held by the Faculty of Information Technology, Brno University of Technology.
-Created as part of a Master's thesis: Deep Learning for Image Stitching.
+DEMIS is a tool for stitching grids of **electron microscopy** (EM) images using deep learning-based feature matching
+and optical flow refinement.
 
-## Environment Setup
+<a href="https://tescan.com/" target="_blank">
+  <img src="./assets/logo-tescan.png" alt="TESCAN GROUP logo" width="240" />
+</a>
+&nbsp;
+<a href="https://www.fit.vut.cz/.en" target="_blank">
+  <img src="./assets/logo-fit-but.png" alt="FIT BUT logo" width="240" />
+</a>
 
-The following commands can be used to prepare the working environment. A CUDA-enabled
-machine is required.
+## Overview
 
-```
-conda env create -f environment.yml
-conda activate demis
-```
+DEMIS normalizes image tiles, detects feature matches using [LoFTR](https://github.com/zju3dv/LoFTR), estimates pairwise
+transformations between tiles, and optimizes them globally to stitch the final grid.
 
-Moreover, weights for LoFTR need to be placed in `LoFTR/weights/`. The following
-weights are recommended:
+Key features:
 
-  - [demis_ds.ckpt](https://drive.google.com/file/d/1HYnYKTxnAA5g7Tizk0Ney_Jeq_VoJYUu/view?usp=sharing)
-    &ndash; Weights fine-tuned on the DEMIS dataset (described below).
-  - [outdoor_ds.ckpt](https://drive.google.com/file/d/1M-VD35-qdB5Iw-AtbDBCKC7hPolFW9UY/view?usp=sharing)
-    &ndash; Pre-trained outdoor dual-softmax weights provided by LoFTR. Trained
-    on conventional photography.
+- **Deep feature matching**: Uses LoFTR for robust matching of EM images with low-quality or highly repetitive texture.
+- **Optical flow refinement**: Refines alignments using [RAFT](https://github.com/princeton-vl/RAFT)-based optical flow.
+- **Flexible configuration**: Support for multiple feature matching, grid construction and image compositing methods.
+- **ImageJ integration**: Includes a plugin for easy use within [ImageJ2](https://imagej.net/software/imagej2/) and
+[Fiji](https://imagej.net/software/fiji/).
 
-## Method Overview
+## Installation
 
-The DEMIS tool stitches images in the following way.
+The following setup guide was tested on **Ubuntu 22.04** and **Windows 11**. Running on Windows might have a negative
+performance impact.
 
-  1. The brightness and contrast of raw image tiles from a grid of overlapping
-     EM images are normalised.
-  
-  2. Feature matches are detected between pairs of adjacent tiles by LoFTR.
-  
-  3. Pairwise transformations are estimated from the detected feature matches.
-  
-  4. The pairwise transformations are optimised globally by
-     [graphslam](https://github.com/JeffLIrion/python-graphslam/).
-  
-  5. The tiles in the grid are stitched together using the optimised transformations.
+### Prerequisites
 
-Stitching using a minimum-spanning tree (MST) instead of SLAM optimisation is also
-supported. The methods and their parameters (such as resolution scaling, expected tile
-overlaps, and types of estimated transformations) can be adjusted by YAML configuration
-files (examples can be found in `configs/`). Paths to data can be configured in the
-same way.
+- **Python 3.9**
+- **uv**: DEMIS uses [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency management.
+- **CUDA**: A CUDA-enabled GPU is required to use deep learning-based features. Running on CPU would be too slow.
 
-## Input Datasets
+### Setup
 
-The tool supports two types of input datasets.
-  
-  1. **DEMIS dataset** &ndash; A synthetic dataset created specifically for training and
-  evaluating the DEMIS tool. The DEMIS dataset can be stitched using ground-truth labels
-  if desired.
-  
-  2. **Other datasets** &ndash; Standard datasets containing grids of overlapping EM images.
-  The expected grid size is derived from the name of the containing directory, which
-  should be formatted as `<rows>x<cols>`. Filenames of image tiles should be formatted
-  as `<dataset_name>_g<grid_index>_t<tile_index>_s<slice_index>.tif`.
+1. Clone the repository:
 
-By default, input datasets should be placed in `datasets/`.
-
-## DEMIS Dataset
-
-A synthetic dataset created by manually selecting 424 distinct high-quality and
-high-resolution EM images publicly available on [EMPIAR](https://www.ebi.ac.uk/empiar/)
-or [The Cell Image Library](http://www.cellimagelibrary.org/). Each selected image was
-divided into a grid of overlapping image tiles of size 1024&times;1024 pixels. Additionally,
-random brightness and contrast changes, random rotation, random translation, and Gaussian
-noise were applied to each tile. The dataset and its source images can be downloaded
-from FIT NextCloud: [source images](https://nextcloud.fit.vutbr.cz/s/773XXbQdYBGKxKH),
-[DEMIS dataset](https://nextcloud.fit.vutbr.cz/s/R3GAr2JcSQFeyi6). The references for
-the source images images can be found in [docs/demis-references.md](docs/demis-references.md).
-
-It is also possible to generate a new version of the DEMIS dataset using the following
-scripts.
-
-  1. [scripts/synthesize_demis.py](scripts/synthesize_demis.py) &ndash; Synthesizes DEMIS
-  from the directory that contains the EM images to split.
-  
-  2. [scripts/generate_demis_splits.py](scripts/generate_demis_splits.py) &ndash; Generates
-  split metadata of the DEMIS dataset, including indices needed for training LoFTR.
-
-The scripts should be executed as modules from the root directory. For example:
-
-```
-conda activate demis
-python3 -m scripts.synthesize_demis <directory_with_source_images> <output_directory>
-python3 -m scripts.generate_demis_splits configs/demis-fine-tuned.yaml
+```bash
+git clone https://github.com/PSilling/demis.git
+cd demis
 ```
 
-The expected directory structure is the following.
+2. Install dependencies using `uv`:
 
-  - `images/` &ndash; Individual image tiles.
-  - `indices/` &ndash; Indices for training LoFTR.
-  - `labels/` &ndash; Ground-truth labels containing tile poses and grid metadata.
-  - `splits/` &ndash; Lists of grids in each split.
+```bash
+uv sync
+```
+
+3. Set `PYTHONPATH` to the root of the repository.
+
+- **Linux:**: `export PYTHONPATH=$PWD`
+- **Windows:**: `$env:PYTHONPATH = $PWD` (PowerShell)
+
+4. Download weights for LoFTR:
+
+- Place LoFTR weights in `LoFTR/weights/`. Recommended options:
+
+  - [demis_ds.ckpt](https://drive.google.com/file/d/1HYnYKTxnAA5g7Tizk0Ney_Jeq_VoJYUu/view?usp=sharing) &ndash; weights
+  fine-tuned on the [EM424 dataset](docs/datasets.md) (synthetic EM image grids).
+  - [outdoor_ds.ckpt](https://drive.google.com/file/d/1M-VD35-qdB5Iw-AtbDBCKC7hPolFW9UY/view?usp=sharing) &ndash;
+  original outdoor dual-softmax weights of LoFTR. Trained on conventional photography only.
 
 ## Usage
 
-The source codes are available in `src/`. The main [stitch.py](scripts/stitch.py) script
-for image stitching is located in `scripts/` and should be executed as a module from
-the root directory. For example, the following command starts stitching the DEMIS dataset
-using default settings and the fine-tuned LoFTR model. By default, the stitched images
-will be saved to `output/DEMIS/`.
+Scripts from `scripts/` directory can be run using `uv run`. Ensure `PYTHONPATH` is set to project root.
 
-```
-conda activate demis
-python3 -m scripts.stitch configs/demis-fine-tuned.yaml
-```
+### Stitching
 
-Additionally, a Jupyter notebook is provided for ease of use:
-[notebooks/stitch.ipynb](notebooks/stitch.ipynb).
+To stitch a dataset using a configuration file:
 
-## Evaluation
-
-Evaluation on the DEMIS dataset can be started using the following commands.
-The evaluation script compares the DEMIS tool to a SIFT baseline. Apart from the
-feature matching method, both evaluated solutions rely on the same DEMIS tool
-configuration.
-
-Fine-tuned weights:
-
-```
-conda activate demis
-python3 -m scripts.evaluate_demis configs/eval-demis-fine-tuned.yaml
+```bash
+uv run scripts/stitch.py --config configs/em424-fine-tuned.yaml
 ```
 
-Pre-trained weights:
+### Evaluation
 
-```
-conda activate demis
-python3 -m scripts.evaluate_demis configs/eval-demis-pre-trained.yaml
-```
+To evaluate performance on the EM424 dataset:
 
-## Fine-Tuning LoFTR
-
-The LoFTR module was fine-tuned on training data from the DEMIS dataset. To start
-the fine-tuning process on 10 epochs and an initial learning rate of `1e-5`, the
-following commands can be used. The default configuration expects a single machine
-with two GPUs. Logs and checkpoints will be saved to `LoFTR/logs/`.
-
-```
-conda activate demis
-cd LoFTR/
-bash scripts/reproduce_train/demis.sh
+```bash
+uv run scripts/evaluate_demis.py --config configs/em424-fine-tuned.yaml
 ```
 
-To enable training on the DEMIS dataset, the following DEMIS-specific files were
-added to the official implementation of LoFTR.
-  
-  - [LoFTR/scripts/reproduce_train/demis.sh](LoFTR/scripts/reproduce_train/demis.sh)
-    &ndash; DEMIS training execution script.
+## Documentation
 
-  - [LoFTR/configs/loftr/demis/loftr_demis_dense.py](LoFTR/configs/loftr/demis/loftr_demis_dense.py)
-    &ndash; DEMIS training configuration.
-  
-  - [LoFTR/configs/data/demis_trainval.py](LoFTR/configs/data/demis_trainval.py)
-    &ndash; DEMIS dataset structure specification.
-  
-  - [LoFTR/src/datasets/demis.py](LoFTR/src/datasets/demis.py)
-    &ndash; DEMIS dataset loader class.
+Detailed documentation is available in the `docs/` directory:
 
-More details can be found in the official
-[training documentation](LoFTR/docs/TRAINING.md) of LoFTR. 
+- [**Configuration Guide**](docs/configuration.md): Detailed explanation of all YAML options.
+- [**Datasets**](docs/datasets.md): Information on the EM424 dataset and expected dataset format.
+- [**Training**](docs/training.md): Instructions for fine-tuning LoFTR on EM424 dataset.
+- [**ImageJ Plugin**](imagej/README.md): Guide for building and using the ImageJ plugin.
 
-## References
+## Acknowledgements
 
-Sun, J., Shen, Z., Wang, Y., Bao, H. and Zhou, X. LoFTR: Detector-Free Local
-Feature Matching with Transformers. In: Conference on Computer Vision and
-Pattern Recognition. Nashville, TN, USA: IEEE, June 2021, p. 8918&ndash;8927.
-CVPR, no. 2021. DOI: 10.1109/CVPR46437.2021.00881. ISSN 1063-6919.
+DEMIS is supported by [TESCAN GROUP](https://tescan.com/) and the [Faculty of Information Technology, Brno University of Technology](https://www.fit.vut.cz/.en).
+
+## Citation
+
+If you use our tool, please cite our [paper](https://www.scitepress.org/Papers/2025/133149/133149.pdf) published in
+**BIOIMAGING 2025**:
+
+ŠILLING, P.; ŠPANĚL, M. DEMIS: Electron Microscopy Image Stitching using Deep Learning Features and Global Optimisation.
+Proceedings of the 18th International Joint Conference on Biomedical Engineering Systems and Technologies - BIOIMAGING.
+Porto: Institute for Systems and Technologies of Information, Control and Communication, 2025. p. 255-256.
+ISBN: 978-989-758-731-3.

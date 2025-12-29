@@ -14,13 +14,13 @@ _C.LOFTR = CN()
 _C.EVAL = CN()
 
 # Dataset configuration.
-_C.DATASET.PATH = "datasets/DEMIS/"
+_C.DATASET.PATH = "datasets/EM424/"
 _C.DATASET.TILE_OVERLAP = 0.3
-_C.DATASET.ROWS = None
-_C.DATASET.COLS = None
+_C.DATASET.ROWS = 2
+_C.DATASET.COLS = 2
 
 # Stitching configuration.
-_C.STITCHER.OUTPUT_PATH = "output/DEMIS/"
+_C.STITCHER.OUTPUT_PATH = "output/EM424/"
 _C.STITCHER.RESOLUTION_RATIO = 0.5
 _C.STITCHER.RESOLUTION_DIVISIBILITY = 8
 _C.STITCHER.MAX_RESOLUTION = 2048
@@ -56,7 +56,7 @@ _C.STITCHER.CLAHE_GRID = (4, 4)
 _C.LOFTR.CHECKPOINT_PATH = "LoFTR/weights/demis_ds.ckpt"
 
 # Evaluator configuration.
-_C.EVAL.SPLIT_PATH = "datasets/DEMIS/splits/test_list.txt"
+_C.EVAL.SPLIT_PATH = "datasets/EM424/splits/test_list.txt"
 _C.EVAL.ERROR_THRESHOLDS = (3, 5, 10)
 _C.EVAL.INVERT_THRESHOLD = False
 _C.EVAL.RAFT_RESOLUTION_RATIO = 0.5

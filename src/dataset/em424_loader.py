@@ -1,4 +1,4 @@
-"""DEMIS dataset loader.
+"""EM424 dataset loader.
 
 Project: Deep Electron Microscopy Image Stitching (DEMIS)
 Author: Petr Šilling
@@ -12,11 +12,11 @@ from glob import glob
 from src.dataset.dataset_loader import DatasetLoader
 
 
-class DemisLoader(DatasetLoader):
-    """Data loader for images in the DEMIS dataset."""
+class EM424Loader(DatasetLoader):
+    """Data loader for images in the EM424 dataset."""
 
-    def parse_demis_labels(self, path):
-        """Parses the given DEMIS dataset labels file.
+    def parse_em424_labels(self, path):
+        """Parses the given EM424 dataset labels file.
 
         :param path: Path to the labels file.
         :return: Parsed label data.
@@ -65,19 +65,19 @@ class DemisLoader(DatasetLoader):
 
     def load_labels(self, split_path=None):
         """
-        Loads labels of all DEMIS images.
+        Loads labels of all EM424 images.
 
         :param split_path: Path to a split file. If included, only labels from the
                            split are loaded.
-        :return: Parsed DEMIS labels.
+        :return: Parsed EM424 labels.
         """
-        # Check if the DEMIS directory exists and has the correct structure.
+        # Check if the EM424 directory exists and has the correct structure.
         labels_path = os.path.join(self.path, "labels")
         images_path = os.path.join(self.path, "images")
         if not os.path.isdir(self.path):
             raise ValueError(f"Cannot read directory: {self.path}")
         if not os.path.isdir(labels_path) or not os.path.isdir(images_path):
-            raise ValueError("The given DEMIS directory has an unexpected structure.")
+            raise ValueError("The given EM424 directory has an unexpected structure.")
 
         # Get paths to all labels files.
         labels_paths = glob(os.path.join(labels_path, "*.txt"))
@@ -89,17 +89,17 @@ class DemisLoader(DatasetLoader):
             splits = [os.path.join(labels_path, path + ".txt") for path in splits]
             labels_paths = [path for path in labels_paths if path in splits]
 
-        labels = [self.parse_demis_labels(path) for path in labels_paths]
+        labels = [self.parse_em424_labels(path) for path in labels_paths]
         return labels
 
     def load_paths(self, labels=None):
         """
-        Loads paths to all DEMIS images based on the corresponding label files.
+        Loads paths to all EM424 images based on the corresponding label files.
 
-        :param labels: Optional list of preloaded DEMIS labels.
+        :param labels: Optional list of preloaded EM424 labels.
         :return: Dictionary of 2D arrays of image paths for each grid.
         """
-        # Get DEMIS labels.
+        # Get EM424 labels.
         if not labels:
             labels = self.load_labels()
 
